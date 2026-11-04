@@ -1,0 +1,10 @@
+repos:
+  - repo: local
+    hooks:
+      - id: check
+        name: Project quality checks
+        entry: uv run --locked python scripts/check.py
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit, pre-push]
