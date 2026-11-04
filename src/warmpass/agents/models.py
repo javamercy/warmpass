@@ -7,10 +7,12 @@ class WarmupAgentType(StrEnum):
     CODEX = "codex"
     ANTIGRAVITY = "antigravity"
 
+
 class WarmupStatus(StrEnum):
     SUCCESS = "success"
     FAILED = "failed"
     TIMEOUT = "timeout"
+
 
 class WarmupResult(BaseModel):
     agent: WarmupAgentType

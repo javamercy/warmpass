@@ -6,11 +6,7 @@ from warmpass.agents.models import WarmupAgentType, WarmupResult, WarmupStatus
 
 
 class CodexWarmupAgent(WarmupAgent):
-    def __init__(
-            self,
-            executable: str = "codex",
-            timeout_seconds: int = 60
-    ) -> None:
+    def __init__(self, executable: str = "codex", timeout_seconds: int = 60) -> None:
         self._executable = executable
         self._timeout_seconds = timeout_seconds
 
@@ -22,7 +18,7 @@ class CodexWarmupAgent(WarmupAgent):
             "--sandbox",
             "read-only",
             "--ephemeral",
-           WARMUP_PROMPT
+            WARMUP_PROMPT,
         ]
 
         try:
@@ -36,7 +32,7 @@ class CodexWarmupAgent(WarmupAgent):
                     encoding="utf-8",
                     timeout=self._timeout_seconds,
                     errors="replace",
-                    check=False
+                    check=False,
                 )
 
         except FileNotFoundError:
@@ -60,18 +56,17 @@ class CodexWarmupAgent(WarmupAgent):
                 message=f"Error during warmup: {error}",
             )
 
-
         if completed.returncode != 0:
             return WarmupResult(
                 agent=WarmupAgentType.CODEX,
                 status=WarmupStatus.FAILED,
                 message=f"Warmup failed with exit code {completed.returncode}.",
-                exit_code=completed.returncode
+                exit_code=completed.returncode,
             )
 
         return WarmupResult(
             agent=WarmupAgentType.CODEX,
             status=WarmupStatus.SUCCESS,
             message="Warmup completed successfully.",
-            exit_code=completed.returncode
+            exit_code=completed.returncode,
         )

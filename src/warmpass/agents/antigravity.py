@@ -6,11 +6,7 @@ from warmpass.agents.models import WarmupAgentType, WarmupResult, WarmupStatus
 
 
 class AntigravityWarmupAgent(WarmupAgent):
-    def __init__(
-            self,
-            executable: str = "agy",
-            timeout_seconds: int = 60
-    ) -> None:
+    def __init__(self, executable: str = "agy", timeout_seconds: int = 60) -> None:
         self._executable = executable
         self._timeout_seconds = timeout_seconds
 
@@ -25,7 +21,7 @@ class AntigravityWarmupAgent(WarmupAgent):
             "json",
             "--print-timeout",
             f"{self._timeout_seconds}s",
-            "--disable-slash-commands"
+            "--disable-slash-commands",
         ]
 
         try:
@@ -39,7 +35,7 @@ class AntigravityWarmupAgent(WarmupAgent):
                     encoding="utf-8",
                     timeout=self._timeout_seconds,
                     errors="replace",
-                    check=False
+                    check=False,
                 )
 
         except FileNotFoundError:
@@ -68,12 +64,12 @@ class AntigravityWarmupAgent(WarmupAgent):
                 agent=WarmupAgentType.CODEX,
                 status=WarmupStatus.FAILED,
                 message=f"Warmup failed with exit code {completed.returncode}.",
-                exit_code=completed.returncode
+                exit_code=completed.returncode,
             )
 
         return WarmupResult(
             agent=WarmupAgentType.CODEX,
             status=WarmupStatus.SUCCESS,
             message="Warmup completed successfully.",
-            exit_code=completed.returncode
+            exit_code=completed.returncode,
         )
