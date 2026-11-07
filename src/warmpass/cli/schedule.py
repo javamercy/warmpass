@@ -5,8 +5,10 @@ from typing import Annotated
 from uuid import uuid4
 
 import typer
+from rich.console import Console
 
 from warmpass.agents.models import WarmupAgentType
+from warmpass.cli.schedule_output import print_schedule, print_schedules
 from warmpass.scheduling.factory import create_warmup_scheduler_service
 from warmpass.scheduling.models import (
     DailyTrigger,
@@ -102,6 +104,9 @@ def add(
     service = create_warmup_scheduler_service()
     service.add(schedule)
 
+    typer.echo("Schedule added:")
+    print_schedule(schedule, Console())
+
 
 @app.command(help="Remove an existing warmup schedule.")
 def remove(
@@ -109,7 +114,10 @@ def remove(
         str, typer.Argument(help="The ID of the schedule to remove.")
     ],
 ) -> None:
-    pass
+    service = create_warmup_scheduler_service()
+    service.remove(schedule_id)
+
+    typer.echo(f"Schedule '{schedule_id}' has been removed.")
 
 
 @app.command(help="Retrieve details of a specific warmup schedule.")
@@ -118,9 +126,19 @@ def get(
         str, typer.Argument(help="The ID of the schedule to retrieve.")
     ],
 ) -> None:
-    pass
+    service = create_warmup_scheduler_service()
+    schedule = service.get(schedule_id)
+
+    if schedule is None:
+        typer.echo(f"No schedule found with ID: {schedule_id}", err=True)
+        raise typer.Exit(code=1)
+
+    print_schedule(schedule, Console())
 
 
 @app.command(name="list", help="List all warmup schedules.")
 def get_list() -> None:
-    pass
+    service = create_warmup_scheduler_service()
+    schedules = service.get_list()
+
+    print_schedules(schedules, Console())
