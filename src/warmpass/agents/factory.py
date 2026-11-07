@@ -1,16 +1,20 @@
 from typing import assert_never
 
-from warmpass.agents.antigravity import AntigravityWarmupAgent
 from warmpass.agents.base import WarmupAgent
-from warmpass.agents.codex import CodexWarmupAgent
 from warmpass.agents.models import WarmupAgentType
 
 
-def get_warmup_agent_by_type(agent_type: WarmupAgentType) -> WarmupAgent:
+def create_warmup_agent(agent_type: WarmupAgentType) -> WarmupAgent:
     match agent_type:
         case WarmupAgentType.CODEX:
+            from warmpass.agents.codex import CodexWarmupAgent
+
             return CodexWarmupAgent()
+
         case WarmupAgentType.ANTIGRAVITY:
+            from warmpass.agents.antigravity import AntigravityWarmupAgent
+
             return AntigravityWarmupAgent()
+
         case _:
             assert_never(agent_type)
