@@ -40,35 +40,35 @@ class AntigravityWarmupAgent(WarmupAgent):
 
         except FileNotFoundError:
             return WarmupResult(
-                agent=WarmupAgentType.CODEX,
+                agent=WarmupAgentType.ANTIGRAVITY,
                 status=WarmupStatus.FAILED,
                 message=f"Executable '{self._executable}' not found.",
             )
 
         except TimeoutExpired:
             return WarmupResult(
-                agent=WarmupAgentType.CODEX,
+                agent=WarmupAgentType.ANTIGRAVITY,
                 status=WarmupStatus.TIMEOUT,
                 message=f"Warmup timed out after {self._timeout_seconds} seconds.",
             )
 
         except OSError as error:
             return WarmupResult(
-                agent=WarmupAgentType.CODEX,
+                agent=WarmupAgentType.ANTIGRAVITY,
                 status=WarmupStatus.FAILED,
                 message=f"Error during warmup: {error}",
             )
 
         if completed.returncode != 0:
             return WarmupResult(
-                agent=WarmupAgentType.CODEX,
+                agent=WarmupAgentType.ANTIGRAVITY,
                 status=WarmupStatus.FAILED,
                 message=f"Warmup failed with exit code {completed.returncode}.",
                 exit_code=completed.returncode,
             )
 
         return WarmupResult(
-            agent=WarmupAgentType.CODEX,
+            agent=WarmupAgentType.ANTIGRAVITY,
             status=WarmupStatus.SUCCESS,
             message="Warmup completed successfully.",
             exit_code=completed.returncode,
