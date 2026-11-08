@@ -48,6 +48,7 @@ def warmup(
         f"status={result.status.value} "
         f"duration={duration:.2f}s "
         f"exit_code={result.exit_code} "
-        f"message={result.message}"
+        f"message={result.message}",
+        err=True,
     )
     raise typer.Exit(code=1)

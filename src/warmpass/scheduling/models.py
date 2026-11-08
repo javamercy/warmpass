@@ -1,6 +1,7 @@
 from datetime import time
 from enum import IntEnum
 from typing import Annotated
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -30,6 +31,6 @@ type WarmupScheduleTrigger = DailyTrigger | WeeklyTrigger
 
 
 class WarmupSchedule(BaseModel):
-    id: str
+    id: UUID
     agent: WarmupAgentType
     trigger: WarmupScheduleTrigger

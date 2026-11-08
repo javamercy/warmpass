@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import time
 from pathlib import Path
 from typing import Final, assert_never
+from uuid import UUID
 
 from pydantic import BaseModel
 
@@ -111,9 +112,9 @@ def parse_calendar_interval(
     return WeeklyTrigger(at=at, days=days)
 
 
-def build_label(schedule_id: str) -> str:
+def build_label(schedule_id: UUID) -> str:
     return f"{LABEL_PREFIX}{schedule_id}"
 
 
-def build_plist_path(launch_agents_directory: Path, schedule_id: str) -> Path:
+def build_plist_path(launch_agents_directory: Path, schedule_id: UUID) -> Path:
     return launch_agents_directory / f"{LABEL_PREFIX}{schedule_id}{PLIST_SUFFIX}"

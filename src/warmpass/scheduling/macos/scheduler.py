@@ -4,6 +4,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 from pyexpat import ExpatError
+from uuid import UUID
 
 from warmpass.agents.models import WarmupAgentType
 from warmpass.scheduling.base import (
@@ -106,7 +107,7 @@ class MacOSLaunchdWarmupScheduler(WarmupScheduler):
     def _bootstrap(self, plist_path: Path) -> None:
         self._run_launchctl("bootstrap", f"gui/{os.getuid()}", str(plist_path))
 
-    def remove(self, schedule_id: str) -> None:
+    def remove(self, schedule_id: UUID) -> None:
         plist_path = build_plist_path(self._launch_agents_directory, schedule_id)
 
         label = build_label(schedule_id)
@@ -127,7 +128,7 @@ class MacOSLaunchdWarmupScheduler(WarmupScheduler):
                 f"Failed to remove schedule `{schedule_id}`: {exc}"
             ) from exc
 
-    def get(self, schedule_id: str) -> WarmupSchedule | None:
+    def get(self, schedule_id: UUID) -> WarmupSchedule | None:
         plist_path = build_plist_path(self._launch_agents_directory, schedule_id)
 
         try:
@@ -164,7 +165,7 @@ class MacOSLaunchdWarmupScheduler(WarmupScheduler):
 
         schedules: list[WarmupSchedule] = []
         for filename in filenames:
-            schedule_id = filename[len(LABEL_PREFIX) : -len(PLIST_SUFFIX)]
+            schedule_id = UUID(filename[len(LABEL_PREFIX) : -len(PLIST_SUFFIX)])
             schedule = self.get(schedule_id)
 
             if schedule is not None:

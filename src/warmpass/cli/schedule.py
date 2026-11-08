@@ -2,7 +2,7 @@ import re
 from datetime import time
 from enum import StrEnum
 from typing import Annotated
-from uuid import uuid4
+from uuid import UUID
 
 import typer
 from rich.console import Console
@@ -12,7 +12,6 @@ from warmpass.cli.schedule_output import print_schedule, print_schedules
 from warmpass.scheduling.factory import create_warmup_scheduler_service
 from warmpass.scheduling.models import (
     DailyTrigger,
-    WarmupSchedule,
     WeekDay,
     WeeklyTrigger,
 )
@@ -95,14 +94,8 @@ def add(
             }
         )
 
-    schedule = WarmupSchedule(
-        id=str(uuid4()),
-        agent=agent,
-        trigger=schedule_trigger,
-    )
-
     service = create_warmup_scheduler_service()
-    service.add(schedule)
+    schedule = service.add(agent, schedule_trigger)
 
     typer.echo("Schedule added:")
     print_schedule(schedule, Console())
@@ -111,7 +104,7 @@ def add(
 @app.command(help="Remove an existing warmup schedule.")
 def remove(
     schedule_id: Annotated[
-        str, typer.Argument(help="The ID of the schedule to remove.")
+        UUID, typer.Argument(help="The ID of the schedule to remove.")
     ],
 ) -> None:
     service = create_warmup_scheduler_service()
@@ -123,7 +116,7 @@ def remove(
 @app.command(help="Retrieve details of a specific warmup schedule.")
 def get(
     schedule_id: Annotated[
-        str, typer.Argument(help="The ID of the schedule to retrieve.")
+        UUID, typer.Argument(help="The ID of the schedule to retrieve.")
     ],
 ) -> None:
     service = create_warmup_scheduler_service()
