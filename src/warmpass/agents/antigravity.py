@@ -1,8 +1,9 @@
 from subprocess import DEVNULL, TimeoutExpired, run
 from tempfile import TemporaryDirectory
 
-from warmpass.agents.base import WARMUP_PROMPT, WarmupAgent
+from warmpass.agents.base import WarmupAgent
 from warmpass.agents.models import WarmupAgentType, WarmupResult, WarmupStatus
+from warmpass.agents.prompts import WARMUP_PROMPT
 
 
 class AntigravityWarmupAgent(WarmupAgent):
@@ -24,6 +25,10 @@ class AntigravityWarmupAgent(WarmupAgent):
             "--disable-slash-commands",
         ]
 
+        status: WarmupStatus
+        message: str
+        exit_code: int | None = None
+
         try:
             with TemporaryDirectory(prefix="warmpass-warmup-") as working_dir:
                 completed = run(
@@ -37,39 +42,31 @@ class AntigravityWarmupAgent(WarmupAgent):
                     errors="replace",
                     check=False,
                 )
+                exit_code = completed.returncode
 
         except FileNotFoundError:
-            return WarmupResult(
-                agent=WarmupAgentType.ANTIGRAVITY,
-                status=WarmupStatus.FAILED,
-                message=f"Executable '{self._executable}' not found.",
-            )
+            status = WarmupStatus.FAILED
+            message = f"Executable '{self._executable}' not found."
 
         except TimeoutExpired:
-            return WarmupResult(
-                agent=WarmupAgentType.ANTIGRAVITY,
-                status=WarmupStatus.TIMEOUT,
-                message=f"Warmup timed out after {self._timeout_seconds} seconds.",
-            )
+            status = WarmupStatus.TIMEOUT
+            message = f"Warmup timed out after {self._timeout_seconds} seconds."
 
         except OSError as error:
-            return WarmupResult(
-                agent=WarmupAgentType.ANTIGRAVITY,
-                status=WarmupStatus.FAILED,
-                message=f"Error during warmup: {error}",
-            )
+            status = WarmupStatus.FAILED
+            message = f"Error during warmup: {error}"
 
-        if completed.returncode != 0:
-            return WarmupResult(
-                agent=WarmupAgentType.ANTIGRAVITY,
-                status=WarmupStatus.FAILED,
-                message=f"Warmup failed with exit code {completed.returncode}.",
-                exit_code=completed.returncode,
-            )
+        else:
+            if exit_code != 0:
+                status = WarmupStatus.FAILED
+                message = f"Warmup failed with exit code {completed.returncode}."
+            else:
+                status = WarmupStatus.SUCCESS
+                message = "Warmup completed successfully."
 
         return WarmupResult(
             agent=WarmupAgentType.ANTIGRAVITY,
-            status=WarmupStatus.SUCCESS,
-            message="Warmup completed successfully.",
-            exit_code=completed.returncode,
+            status=status,
+            message=message,
+            exit_code=exit_code,
         )
