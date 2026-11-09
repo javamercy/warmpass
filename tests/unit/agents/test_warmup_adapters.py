@@ -9,9 +9,10 @@ import pytest
 import warmpass.agents.antigravity as antigravity_module
 import warmpass.agents.codex as codex_module
 from warmpass.agents.antigravity import AntigravityWarmupAgent
-from warmpass.agents.base import WARMUP_PROMPT, WarmupAgent
+from warmpass.agents.base import WarmupAgent
 from warmpass.agents.codex import CodexWarmupAgent
 from warmpass.agents.models import WarmupAgentType, WarmupStatus
+from warmpass.agents.prompts import WARMUP_PROMPT
 
 type AgentCase = tuple[type[WarmupAgent], ModuleType, WarmupAgentType]
 
