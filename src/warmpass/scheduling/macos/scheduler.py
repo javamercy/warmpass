@@ -14,16 +14,17 @@ from warmpass.scheduling.macos.plist import (
     build_label,
     build_plist_path,
 )
-from warmpass.scheduling.macos.store import (
-    read_schedule,
-    remove_schedule,
-    write_schedule,
-)
 from warmpass.scheduling.models import WarmupSchedule
+from warmpass.scheduling.store import WarmupScheduleStore
 
 
 class MacOSLaunchdWarmupScheduler(WarmupScheduler):
-    def __init__(self, executable: Path, executable_search_path: str) -> None:
+    def __init__(
+        self,
+        *,
+        executable: Path,
+        executable_search_path: str,
+    ) -> None:
         executable = executable.expanduser()
         if not executable.is_absolute():
             raise ValueError(f"Executable path must be absolute: {executable}")
@@ -37,9 +38,11 @@ class MacOSLaunchdWarmupScheduler(WarmupScheduler):
         self._home = Path.home()
         self._launch_agents_directory = self._home / "Library" / "LaunchAgents"
         self._log_directory = self._home / "Library" / "Logs" / "Warmup"
+
         self._store_directory = (
             self._home / "Library" / "Application Support" / "Warmup"
         )
+        self._store = WarmupScheduleStore(self._store_directory)
 
     def add(self, schedule: WarmupSchedule) -> None:
         plist_path = build_plist_path(self._launch_agents_directory, schedule.id)
@@ -63,7 +66,7 @@ class MacOSLaunchdWarmupScheduler(WarmupScheduler):
         plist_path.parent.mkdir(parents=True, exist_ok=True)
 
         try:
-            write_schedule(self._store_directory, schedule)
+            self._store.write(schedule)
         except FileExistsError as exc:
             raise WarmupSchedulerError(
                 f"Schedule with ID {schedule.id} already exists in the store."
@@ -157,7 +160,7 @@ class MacOSLaunchdWarmupScheduler(WarmupScheduler):
             ) from exc
 
         try:
-            remove_schedule(self._store_directory, schedule_id)
+            self._store.remove(schedule_id)
         except OSError as exc:
             raise WarmupSchedulerError(
                 f"Schedule {schedule_id} was unloaded and its plist removed, but "
@@ -262,7 +265,7 @@ class MacOSLaunchdWarmupScheduler(WarmupScheduler):
         plist_path = build_plist_path(self._launch_agents_directory, schedule_id)
 
         try:
-            schedule = read_schedule(self._store_directory, schedule_id)
+            schedule = self._store.read(schedule_id)
         except (ValueError, OSError) as exc:
             raise WarmupSchedulerError(
                 f"Cannot read saved schedule {schedule_id}: {exc}"
