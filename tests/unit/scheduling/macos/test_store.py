@@ -1,3 +1,4 @@
+import sys
 from datetime import time
 from pathlib import Path
 from uuid import uuid4
@@ -18,6 +19,10 @@ from warmpass.scheduling.models import (
     WarmupSchedule,
     WeekDay,
     WeeklyTrigger,
+)
+
+pytestmark = pytest.mark.skipif(
+    sys.platform != "darwin", reason="Tests macOS schedule record storage"
 )
 
 

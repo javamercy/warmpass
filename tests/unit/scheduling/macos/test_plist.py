@@ -1,3 +1,4 @@
+import sys
 from datetime import time
 from pathlib import Path
 from uuid import uuid4
@@ -13,6 +14,10 @@ from warmpass.scheduling.models import (
     WarmupScheduleTrigger,
     WeekDay,
     WeeklyTrigger,
+)
+
+pytestmark = pytest.mark.skipif(
+    sys.platform != "darwin", reason="Tests macOS launchd plist generation"
 )
 
 
@@ -79,26 +84,29 @@ def test_weekly_schedule_maps_weekdays_to_launchd(
     ]
 
 
-def test_plist_contains_expected_command_environment_and_logs() -> None:
+def test_plist_contains_expected_command_environment_and_logs(tmp_path: Path) -> None:
     schedule = WarmupSchedule(
         id=uuid4(),
         agent=WarmupAgentType.CODEX,
         trigger=DailyTrigger(window=HourlyWindow(every=5)),
     )
+    executable = tmp_path / "bin" / "warmpass"
+    home = tmp_path / "home"
+    log_directory = home / "logs"
     config = PlistConfiguration.from_schedule(
         schedule,
         program_arguments=["warmup", "--agent", "codex"],
-        executable=Path("/bin/warmpass"),
-        home=Path("/home/test"),
-        log_directory=Path("/home/test/logs"),
+        executable=executable,
+        home=home,
+        log_directory=log_directory,
         executable_search_path="/bin:/usr/bin",
     )
     assert config.Label == build_label(schedule.id)
-    assert config.ProgramArguments == ["/bin/warmpass", "warmup", "--agent", "codex"]
+    assert config.ProgramArguments == [str(executable), "warmup", "--agent", "codex"]
     assert config.EnvironmentVariables == {
-        "HOME": "/home/test",
+        "HOME": str(home),
         "PATH": "/bin:/usr/bin",
     }
-    assert config.StandardOutPath == f"/home/test/logs/{schedule.id}.out.log"
-    assert config.StandardErrorPath == f"/home/test/logs/{schedule.id}.err.log"
+    assert config.StandardOutPath == str(log_directory / f"{schedule.id}.out.log")
+    assert config.StandardErrorPath == str(log_directory / f"{schedule.id}.err.log")
     assert not config.RunAtLoad and not config.KeepAlive
