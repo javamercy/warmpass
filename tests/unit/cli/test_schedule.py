@@ -6,7 +6,7 @@ import pytest
 from typer.testing import CliRunner
 
 import warmpass.cli.schedule as schedule_module
-from warmpass.agents.models import WarmupAgentType
+from warmpass.agents.models import AgentType
 from warmpass.cli.main import app
 from warmpass.scheduling.base import WarmupSchedulerError
 from warmpass.scheduling.models import (
@@ -21,7 +21,7 @@ from warmpass.scheduling.models import (
 def test_add_daily_schedule_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
     schedule = WarmupSchedule(
         id=uuid4(),
-        agent=WarmupAgentType.CODEX,
+        agent=AgentType.CODEX,
         trigger=DailyTrigger(window=HourlyWindow(from_=time(23, 23), every=2)),
     )
     service = Mock()
@@ -51,7 +51,7 @@ def test_add_daily_schedule_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert result.exit_code == 0
     service.add.assert_called_once_with(
-        WarmupAgentType.CODEX,
+        AgentType.CODEX,
         DailyTrigger(window=HourlyWindow(from_=time(23, 23), every=2)),
     )
 
@@ -65,7 +65,7 @@ def test_add_weekly_schedule_succeeds(
     )
     schedule = WarmupSchedule(
         id=uuid4(),
-        agent=WarmupAgentType.CODEX,
+        agent=AgentType.CODEX,
         trigger=trigger,
     )
     service = Mock()
@@ -98,7 +98,7 @@ def test_add_weekly_schedule_succeeds(
     )
 
     assert result.exit_code == 0, result.output
-    service.add.assert_called_once_with(WarmupAgentType.CODEX, trigger)
+    service.add.assert_called_once_with(AgentType.CODEX, trigger)
 
 
 def test_add_schedule_rejects_invalid_time(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -226,7 +226,7 @@ def test_get_existing_schedule_succeeds(
 ) -> None:
     schedule = WarmupSchedule(
         id=uuid4(),
-        agent=WarmupAgentType.CODEX,
+        agent=AgentType.CODEX,
         trigger=DailyTrigger(window=HourlyWindow(from_=time(23, 23), every=2)),
     )
     service = Mock()
@@ -254,12 +254,12 @@ def test_list_schedules_succeeds(
     schedules = [
         WarmupSchedule(
             id=uuid4(),
-            agent=WarmupAgentType.CODEX,
+            agent=AgentType.CODEX,
             trigger=DailyTrigger(window=HourlyWindow(from_=time(23, 23), every=2)),
         ),
         WarmupSchedule(
             id=uuid4(),
-            agent=WarmupAgentType.ANTIGRAVITY,
+            agent=AgentType.ANTIGRAVITY,
             trigger=DailyTrigger(window=HourlyWindow(from_=time(22, 22), every=2)),
         ),
     ]

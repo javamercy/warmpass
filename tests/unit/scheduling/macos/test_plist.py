@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import pytest
 
-from warmpass.agents.models import WarmupAgentType
+from warmpass.agents.models import AgentType
 from warmpass.scheduling.macos.plist import PlistConfiguration, build_label
 from warmpass.scheduling.models import (
     DailyTrigger,
@@ -22,7 +22,7 @@ pytestmark = pytest.mark.skipif(
 
 
 def make_configuration(trigger: WarmupScheduleTrigger) -> PlistConfiguration:
-    schedule = WarmupSchedule(id=uuid4(), agent=WarmupAgentType.CODEX, trigger=trigger)
+    schedule = WarmupSchedule(id=uuid4(), agent=AgentType.CODEX, trigger=trigger)
     return PlistConfiguration.from_schedule(
         schedule=schedule,
         program_arguments=["warmup", "--agent", "codex"],
@@ -87,7 +87,7 @@ def test_weekly_schedule_maps_weekdays_to_launchd(
 def test_plist_contains_expected_command_environment_and_logs(tmp_path: Path) -> None:
     schedule = WarmupSchedule(
         id=uuid4(),
-        agent=WarmupAgentType.CODEX,
+        agent=AgentType.CODEX,
         trigger=DailyTrigger(window=HourlyWindow(every=5)),
     )
     executable = tmp_path / "bin" / "warmpass"

@@ -11,7 +11,7 @@ import pytest
 from typer.testing import CliRunner
 
 import warmpass.cli.schedule as schedule_module
-from warmpass.agents.models import WarmupAgentType
+from warmpass.agents.models import AgentType
 from warmpass.cli.main import app
 from warmpass.scheduling.base import WarmupSchedulerError
 from warmpass.scheduling.macos.plist import LABEL_PREFIX, build_label, build_plist_path
@@ -45,7 +45,7 @@ def scheduler_setup(
 def daily_schedule() -> WarmupSchedule:
     return WarmupSchedule(
         id=uuid4(),
-        agent=WarmupAgentType.CODEX,
+        agent=AgentType.CODEX,
         trigger=DailyTrigger(
             window=HourlyWindow(from_=time(9), until=time(12, 30), every=2)
         ),

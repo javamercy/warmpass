@@ -1,6 +1,6 @@
 from uuid import UUID, uuid4
 
-from warmpass.agents.models import WarmupAgentType
+from warmpass.agents.models import AgentType
 from warmpass.scheduling.base import WarmupScheduler
 from warmpass.scheduling.models import WarmupSchedule, WarmupScheduleTrigger
 
@@ -9,9 +9,7 @@ class WarmupSchedulerService:
     def __init__(self, warmup_scheduler: WarmupScheduler):
         self._warmup_scheduler = warmup_scheduler
 
-    def add(
-        self, agent: WarmupAgentType, trigger: WarmupScheduleTrigger
-    ) -> WarmupSchedule:
+    def add(self, agent: AgentType, trigger: WarmupScheduleTrigger) -> WarmupSchedule:
         schedule = WarmupSchedule(
             id=uuid4(),
             agent=agent,

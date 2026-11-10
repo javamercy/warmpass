@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from warmpass.agents.models import WarmupAgentType
+from warmpass.agents.models import AgentType
 
 
 class WeekDay(IntEnum):
@@ -89,5 +89,5 @@ type WarmupScheduleTrigger = Annotated[
 
 class WarmupSchedule(BaseModel):
     id: UUID
-    agent: WarmupAgentType
+    agent: AgentType
     trigger: WarmupScheduleTrigger

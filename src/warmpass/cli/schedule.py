@@ -8,7 +8,7 @@ import typer
 from pydantic import ValidationError
 from rich.console import Console
 
-from warmpass.agents.models import WarmupAgentType
+from warmpass.agents.models import AgentType
 from warmpass.cli.schedule_output import print_schedule, print_schedules
 from warmpass.scheduling.base import WarmupSchedulerError
 from warmpass.scheduling.factory import create_warmup_scheduler_service
@@ -62,7 +62,7 @@ def parse_schedule_time(value: str) -> time:
 @app.command(help="Add a new warmup schedule.")
 def add(
     agent: Annotated[
-        WarmupAgentType,
+        AgentType,
         typer.Option(help="The agent to schedule for warmup."),
     ],
     trigger: Annotated[

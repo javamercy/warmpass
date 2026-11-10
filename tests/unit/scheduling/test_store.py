@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 import pytest
 from pydantic import ValidationError
 
-from warmpass.agents.models import WarmupAgentType
+from warmpass.agents.models import AgentType
 from warmpass.scheduling.models import (
     DailyTrigger,
     HourlyWindow,
@@ -24,7 +24,7 @@ def test_record_round_trips_original_window(tmp_path: Path, weekly: bool) -> Non
         if weekly
         else DailyTrigger(window=window)
     )
-    schedule = WarmupSchedule(id=uuid4(), agent=WarmupAgentType.CODEX, trigger=trigger)
+    schedule = WarmupSchedule(id=uuid4(), agent=AgentType.CODEX, trigger=trigger)
     directory = tmp_path / "nested" / "schedules"
     store = WarmupScheduleStore(directory)
 
@@ -40,7 +40,7 @@ def test_record_round_trips_original_window(tmp_path: Path, weekly: bool) -> Non
 def test_write_does_not_overwrite_existing_record(tmp_path: Path) -> None:
     schedule = WarmupSchedule(
         id=uuid4(),
-        agent=WarmupAgentType.CODEX,
+        agent=AgentType.CODEX,
         trigger=DailyTrigger(window=HourlyWindow(every=2)),
     )
     store = WarmupScheduleStore(tmp_path)
@@ -65,7 +65,7 @@ def test_remove_existing_record(tmp_path: Path) -> None:
     store = WarmupScheduleStore(tmp_path)
     schedule = WarmupSchedule(
         id=uuid4(),
-        agent=WarmupAgentType.CODEX,
+        agent=AgentType.CODEX,
         trigger=DailyTrigger(window=HourlyWindow(every=2)),
     )
     store.write(schedule)
@@ -90,7 +90,7 @@ def test_corrupt_record_is_reported(tmp_path: Path) -> None:
 def test_record_id_must_match_filename(tmp_path: Path) -> None:
     schedule = WarmupSchedule(
         id=uuid4(),
-        agent=WarmupAgentType.CODEX,
+        agent=AgentType.CODEX,
         trigger=DailyTrigger(window=HourlyWindow(every=2)),
     )
     filename_id = uuid4()

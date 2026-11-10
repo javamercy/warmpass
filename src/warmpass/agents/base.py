@@ -1,7 +1,9 @@
 from typing import Protocol
 
-from warmpass.agents.models import WarmupResult
+
+class WarmupError(RuntimeError):
+    pass
 
 
 class WarmupAgent(Protocol):
-    def warmup(self) -> WarmupResult: ...
+    def warmup(self) -> None: ...
