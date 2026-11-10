@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import time
 from pathlib import Path
 from typing import Final, assert_never
 from uuid import UUID
@@ -9,6 +8,7 @@ from pydantic import BaseModel
 
 from warmpass.scheduling.models import (
     DailyTrigger,
+    HourlyWindow,
     WarmupSchedule,
     WarmupScheduleTrigger,
     WeekDay,
@@ -59,57 +59,59 @@ class PlistConfiguration(BaseModel):
 
 def _build_calendar_interval(
     trigger: WarmupScheduleTrigger,
-) -> dict[str, int] | list[dict[str, int]]:
+) -> list[dict[str, int]]:
     match trigger:
-        case DailyTrigger(at=at):
-            return {
-                "Hour": at.hour,
-                "Minute": at.minute,
-            }
+        case DailyTrigger(window=window):
+            return _build_hourly_intervals(window)
 
-        case WeeklyTrigger(at=at, days=days):
-            return [
-                {
-                    "Hour": at.hour,
-                    "Minute": at.minute,
-                    "Weekday": (int(day) + 1) % 7,
-                }
-                for day in days
-            ]
+        case WeeklyTrigger(window=window, days=days):
+            return _build_hourly_intervals(window, days)
 
         case _:
             assert_never(trigger)
 
 
-def parse_calendar_interval(
-    value: dict[str, int] | list[dict[str, int]],
-) -> WarmupScheduleTrigger:
-    if isinstance(value, dict):
-        return DailyTrigger(at=time(hour=value["Hour"], minute=value["Minute"]))
+def _build_hourly_intervals(
+    window: HourlyWindow,
+    days: list[WeekDay] | None = None,
+) -> list[dict[str, int]]:
+    minutes_per_day = 24 * 60
+    start = (
+        window.from_.hour * 60 + window.from_.minute if window.from_ is not None else 0
+    )
+    end = (
+        window.until.hour * 60 + window.until.minute
+        if window.until is not None
+        else minutes_per_day
+    )
 
-    days: set[WeekDay] = set()
-    at: time | None = None
+    if end < start:
+        end += minutes_per_day
 
-    for interval in value:
-        current_time = time(hour=interval["Hour"], minute=interval["Minute"])
-        weekday = interval["Weekday"]
-        if not (0 <= weekday <= 7):
-            raise ValueError("Invalid weekday")
+    intervals: list[dict[str, int]] = []
 
-        if at is None:
-            at = current_time
-        elif at != current_time:
-            raise ValueError("Weekly intervals must share the same time")
+    for minute in range(start, end, window.every * 60):
+        minute_of_day = minute % minutes_per_day
+        hour, minute_of_hour = divmod(minute_of_day, 60)
 
-        days.add(WeekDay((weekday + 6) % 7))
+        if days is None:
+            intervals.append(
+                {
+                    "Hour": hour,
+                    "Minute": minute_of_hour,
+                }
+            )
+        else:
+            for day in days:
+                intervals.append(
+                    {
+                        "Hour": hour,
+                        "Minute": minute_of_hour,
+                        "Weekday": (int(day) + 1) % 7,
+                    }
+                )
 
-    if len(days) != len(value):
-        raise ValueError("Duplicate weekdays")
-
-    if at is None:
-        raise ValueError("Missing weekly time")
-
-    return WeeklyTrigger(at=at, days=days)
+    return intervals
 
 
 def build_label(schedule_id: UUID) -> str:

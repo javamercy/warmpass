@@ -8,8 +8,10 @@ from typer.testing import CliRunner
 import warmpass.cli.schedule as schedule_module
 from warmpass.agents.models import WarmupAgentType
 from warmpass.cli.main import app
+from warmpass.scheduling.base import WarmupSchedulerError
 from warmpass.scheduling.models import (
     DailyTrigger,
+    HourlyWindow,
     WarmupSchedule,
     WeekDay,
     WeeklyTrigger,
@@ -20,7 +22,7 @@ def test_add_daily_schedule_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
     schedule = WarmupSchedule(
         id=uuid4(),
         agent=WarmupAgentType.CODEX,
-        trigger=DailyTrigger(at=time(23, 23)),
+        trigger=DailyTrigger(window=HourlyWindow(from_=time(23, 23), every=2)),
     )
     service = Mock()
     service.add.return_value = schedule
@@ -40,15 +42,17 @@ def test_add_daily_schedule_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
             "codex",
             "--trigger",
             "daily",
-            "--at",
+            "--from",
             "23:23",
+            "--every",
+            "2h",
         ],
     )
 
     assert result.exit_code == 0
     service.add.assert_called_once_with(
         WarmupAgentType.CODEX,
-        DailyTrigger(at=time(23, 23)),
+        DailyTrigger(window=HourlyWindow(from_=time(23, 23), every=2)),
     )
 
 
@@ -56,7 +60,7 @@ def test_add_weekly_schedule_succeeds(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     trigger = WeeklyTrigger(
-        at=time(23, 23),
+        window=HourlyWindow(from_=time(23, 23), every=2),
         days=[WeekDay.MONDAY, WeekDay.FRIDAY],
     )
     schedule = WarmupSchedule(
@@ -82,8 +86,10 @@ def test_add_weekly_schedule_succeeds(
             "codex",
             "--trigger",
             "weekly",
-            "--at",
+            "--from",
             "23:23",
+            "--every",
+            "2h",
             "--day",
             "monday",
             "--day",
@@ -112,8 +118,10 @@ def test_add_schedule_rejects_invalid_time(monkeypatch: pytest.MonkeyPatch) -> N
             "codex",
             "--trigger",
             "daily",
-            "--at",
+            "--from",
             "25:00",
+            "--every",
+            "2h",
         ],
     )
 
@@ -158,8 +166,10 @@ def test_add_schedule_rejects_invalid_day_options(
             "codex",
             "--trigger",
             trigger,
-            "--at",
+            "--from",
             "23:23",
+            "--every",
+            "2h",
             *day_options,
         ],
     )
@@ -217,7 +227,7 @@ def test_get_existing_schedule_succeeds(
     schedule = WarmupSchedule(
         id=uuid4(),
         agent=WarmupAgentType.CODEX,
-        trigger=DailyTrigger(at=time(23, 23)),
+        trigger=DailyTrigger(window=HourlyWindow(from_=time(23, 23), every=2)),
     )
     service = Mock()
     service.get.return_value = schedule
@@ -245,12 +255,12 @@ def test_list_schedules_succeeds(
         WarmupSchedule(
             id=uuid4(),
             agent=WarmupAgentType.CODEX,
-            trigger=DailyTrigger(at=time(23, 23)),
+            trigger=DailyTrigger(window=HourlyWindow(from_=time(23, 23), every=2)),
         ),
         WarmupSchedule(
             id=uuid4(),
             agent=WarmupAgentType.ANTIGRAVITY,
-            trigger=DailyTrigger(at=time(22, 22)),
+            trigger=DailyTrigger(window=HourlyWindow(from_=time(22, 22), every=2)),
         ),
     ]
     service = Mock()
@@ -289,3 +299,78 @@ def test_schedule_command_rejects_invalid_id(
 
     assert result.exit_code != 0
     create_service.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        [],
+        ["--every", "6h"],
+        ["--every", "2h", "--from", "09:00", "--until", "09:00"],
+        ["--every", "1h", "--from", "9:00"],
+        ["--every", "1h", "--until", "00:00"],
+        ["--every", "1h", "--at", "09:00"],
+    ],
+)
+def test_add_rejects_invalid_window_options(
+    monkeypatch: pytest.MonkeyPatch, options: list[str]
+) -> None:
+    create_service = Mock()
+    monkeypatch.setattr(
+        schedule_module, "create_warmup_scheduler_service", create_service
+    )
+    result = CliRunner().invoke(
+        app, ["schedule", "add", "--agent", "codex", "--trigger", "daily", *options]
+    )
+    assert result.exit_code != 0
+    create_service.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("method", "args"),
+    [
+        ("add", ["add", "--agent", "codex", "--trigger", "daily", "--every", "1h"]),
+        ("get", ["get", str(uuid4())]),
+        ("get_list", ["list"]),
+        ("remove", ["remove", str(uuid4())]),
+        ("clear", ["clear", "--yes"]),
+    ],
+)
+def test_scheduler_errors_are_reported(
+    monkeypatch: pytest.MonkeyPatch, method: str, args: list[str]
+) -> None:
+    service = Mock()
+    getattr(service, method).side_effect = WarmupSchedulerError("invalid schedule")
+    monkeypatch.setattr(
+        schedule_module, "create_warmup_scheduler_service", Mock(return_value=service)
+    )
+    result = CliRunner().invoke(app, ["schedule", *args])
+    assert result.exit_code == 1
+    assert "invalid schedule" in result.stderr
+    assert "Traceback" not in result.output
+
+
+@pytest.mark.parametrize(
+    ("args", "answer", "clears"),
+    [
+        ([], "n\n", False),
+        ([], "y\n", True),
+        (["--yes"], "", True),
+        (["-y"], "", True),
+    ],
+)
+def test_clear_confirmation(
+    monkeypatch: pytest.MonkeyPatch, args: list[str], answer: str, clears: bool
+) -> None:
+    service = Mock()
+    factory = Mock(return_value=service)
+    monkeypatch.setattr(schedule_module, "create_warmup_scheduler_service", factory)
+    result = CliRunner().invoke(app, ["schedule", "clear", *args], input=answer)
+    assert result.exit_code == 0, result.output
+    if clears:
+        service.clear.assert_called_once_with()
+        service.get_list.assert_not_called()
+        assert "cleared" in result.output
+    else:
+        factory.assert_not_called()
+        assert "cancelled" in result.output

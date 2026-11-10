@@ -13,18 +13,31 @@ from warmpass.scheduling.models import (
 
 
 def format_trigger(trigger: WarmupScheduleTrigger) -> str:
-    at = trigger.at.strftime("%H:%M")
+    window = trigger.window
+
+    start = window.from_.strftime("%H:%M") if window.from_ else "00:00"
+    end = window.until.strftime("%H:%M") if window.until else "24:00"
+
+    if (
+        window.from_ is not None
+        and window.until is not None
+        and window.until < window.from_
+    ):
+        end += " next day"
+
+    frequency = "every hour" if window.every == 1 else f"every {window.every} hours"
 
     match trigger:
         case DailyTrigger():
-            return f"Daily at {at}"
+            days = "Daily"
 
-        case WeeklyTrigger(days=days):
-            day_names = ", ".join(day.name.title()[:3] for day in sorted(days))
-            return f"{day_names} at {at}"
+        case WeeklyTrigger(days=weekdays):
+            days = ", ".join(day.name.title()[:3] for day in sorted(weekdays))
 
         case _:
             assert_never(trigger)
+
+    return f"{days}, {frequency}, [{start}–{end}) (local time)"
 
 
 def print_schedule(schedule: WarmupSchedule, console: Console) -> None:

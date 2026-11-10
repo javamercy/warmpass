@@ -23,6 +23,9 @@ class WarmupSchedulerService:
     def remove(self, schedule_id: UUID) -> None:
         self._warmup_scheduler.remove(schedule_id)
 
+    def clear(self) -> None:
+        self._warmup_scheduler.clear()
+
     def get(self, schedule_id: UUID) -> WarmupSchedule | None:
         return self._warmup_scheduler.get(schedule_id)
 
