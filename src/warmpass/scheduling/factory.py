@@ -4,10 +4,6 @@ from warmpass.scheduling.base import WarmupScheduler
 from warmpass.scheduling.service import WarmupSchedulerService
 
 
-class UnsupportedPlatformError(RuntimeError):
-    pass
-
-
 def create_warmup_scheduler() -> WarmupScheduler:
     match sys.platform:
         case "darwin":
@@ -15,8 +11,15 @@ def create_warmup_scheduler() -> WarmupScheduler:
 
             return create_macos_warmup_scheduler()
 
+        case "win32":
+            from warmpass.scheduling.windows.factory import (
+                create_windows_warmup_scheduler,
+            )
+
+            return create_windows_warmup_scheduler()
+
         case _:
-            raise UnsupportedPlatformError(
+            raise RuntimeError(
                 f"Scheduling is not supported on this platform: {sys.platform}"
             )
 
