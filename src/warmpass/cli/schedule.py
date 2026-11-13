@@ -10,11 +10,12 @@ from rich.console import Console
 
 from warmpass.agents.models import AgentType
 from warmpass.cli.schedule_output import print_schedule, print_schedules
-from warmpass.scheduling.base import WarmupSchedulerError
-from warmpass.scheduling.factory import create_warmup_scheduler_service
+from warmpass.scheduling.base import SchedulerError
+from warmpass.scheduling.factory import create_scheduler_service
 from warmpass.scheduling.models import (
     DailyTrigger,
     HourlyWindow,
+    ScheduleTrigger,
     TriggerKind,
     WeekDay,
     WeeklyTrigger,
@@ -59,7 +60,12 @@ def parse_schedule_time(value: str) -> time:
         raise typer.BadParameter("Enter a valid time between 00:00 and 23:59.") from exc
 
 
-@app.command(help="Add a new warmup schedule.")
+@app.command(
+    help=(
+        "Add a new warmup schedule "
+        "(e.g. warmpass schedule add --agent codex --trigger daily --from 09:00 --until 17:00 --every 2h)."
+    )
+)
 def add(
     agent: Annotated[
         AgentType,
@@ -101,6 +107,11 @@ def add(
             "--day can only be used with a weekly trigger.",
             param_hint="--day",
         )
+    if trigger == TriggerKind.WEEKLY and not day:
+        raise typer.BadParameter(
+            "A weekly trigger requires at least one --day.",
+            param_hint="--day",
+        )
 
     try:
         window = HourlyWindow(
@@ -109,26 +120,22 @@ def add(
             every=every.to_hours(),
         )
 
-        if trigger == TriggerKind.DAILY:
-            schedule_trigger = DailyTrigger(window=window)
-        else:
-            if not day:
-                raise typer.BadParameter(
-                    "A weekly trigger requires at least one --day.",
-                    param_hint="--day",
-                )
-            schedule_trigger = WeeklyTrigger(
-                days=[item.to_weekday() for item in day],
+        schedule_trigger: ScheduleTrigger = (
+            DailyTrigger(window=window)
+            if trigger == TriggerKind.DAILY
+            else WeeklyTrigger(
+                days=[item.to_weekday() for item in day or ()],
                 window=window,
             )
+        )
     except ValidationError as exc:
-        message = exc.errors()[0]["msg"]
+        message = exc.errors()[0]["msg"].removeprefix("Value error, ")
         raise typer.BadParameter(message) from exc
 
     try:
-        service = create_warmup_scheduler_service()
+        service = create_scheduler_service()
         schedule = service.add(agent, schedule_trigger)
-    except WarmupSchedulerError as exc:
+    except SchedulerError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
@@ -143,9 +150,9 @@ def remove(
     ],
 ) -> None:
     try:
-        service = create_warmup_scheduler_service()
+        service = create_scheduler_service()
         service.remove(schedule_id)
-    except WarmupSchedulerError as exc:
+    except SchedulerError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
@@ -164,9 +171,9 @@ def clear(
         return
 
     try:
-        service = create_warmup_scheduler_service()
+        service = create_scheduler_service()
         service.clear()
-    except WarmupSchedulerError as exc:
+    except SchedulerError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
@@ -180,9 +187,9 @@ def get(
     ],
 ) -> None:
     try:
-        service = create_warmup_scheduler_service()
+        service = create_scheduler_service()
         schedule = service.get(schedule_id)
-    except WarmupSchedulerError as exc:
+    except SchedulerError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
@@ -196,9 +203,9 @@ def get(
 @app.command(name="list", help="List all warmup schedules.")
 def get_list() -> None:
     try:
-        service = create_warmup_scheduler_service()
+        service = create_scheduler_service()
         schedules = service.get_list()
-    except WarmupSchedulerError as exc:
+    except SchedulerError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 

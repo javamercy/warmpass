@@ -1,18 +1,12 @@
-from __future__ import annotations
-
 from pathlib import Path
-from typing import Final, assert_never
+from typing import Annotated, Final
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from warmpass.scheduling.models import (
-    DailyTrigger,
-    HourlyWindow,
-    WarmupSchedule,
-    WarmupScheduleTrigger,
+    ScheduledTrigger,
     WeekDay,
-    WeeklyTrigger,
 )
 
 LABEL_PREFIX: Final[str] = "dev.warmpass.schedule."
@@ -20,101 +14,105 @@ PLIST_SUFFIX: Final[str] = ".plist"
 
 
 class PlistConfiguration(BaseModel):
-    Label: str
-    ProgramArguments: list[str]
-    StartCalendarInterval: dict[str, int] | list[dict[str, int]]
-    RunAtLoad: bool
-    KeepAlive: bool
-    WorkingDirectory: str
-    EnvironmentVariables: dict[str, str]
-    StandardOutPath: str
-    StandardErrorPath: str
+    model_config = ConfigDict(validate_by_alias=True, validate_by_name=True)
+
+    label: Annotated[str, Field(alias="Label")]
+    program_arguments: Annotated[list[str], Field(alias="ProgramArguments")]
+    start_calendar_interval: Annotated[
+        list[dict[str, int]], Field(alias="StartCalendarInterval")
+    ]
+    run_at_load: Annotated[bool, Field(alias="RunAtLoad")]
+    keep_alive: Annotated[bool, Field(alias="KeepAlive")]
+    working_directory: Annotated[str, Field(alias="WorkingDirectory")]
+    environment_variables: Annotated[
+        dict[str, str], Field(alias="EnvironmentVariables")
+    ]
+    standard_out_path: Annotated[str, Field(alias="StandardOutPath")]
+    standard_error_path: Annotated[str, Field(alias="StandardErrorPath")]
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_single_interval(cls, data: object) -> object:
+        if isinstance(data, dict):
+            interval = data.get("StartCalendarInterval")
+            if isinstance(interval, dict):
+                return {**data, "StartCalendarInterval": [interval]}
+        return data
 
     @classmethod
-    def from_schedule(
+    def from_job(
         cls,
-        schedule: WarmupSchedule,
+        schedule_id: UUID,
         *,
-        program_arguments: list[str],
-        executable: Path,
+        warmpass_executable: Path,
+        arguments: list[str],
+        triggers: list[ScheduledTrigger],
         home: Path,
         log_directory: Path,
-        executable_search_path: str,
+        warmpass_executable_search_path: str,
     ) -> PlistConfiguration:
         return cls(
-            Label=build_label(schedule.id),
-            ProgramArguments=[str(executable), *program_arguments],
-            StartCalendarInterval=_build_calendar_interval(schedule.trigger),
-            RunAtLoad=False,
-            KeepAlive=False,
-            WorkingDirectory=str(home),
-            EnvironmentVariables={
+            label=build_label(schedule_id),
+            program_arguments=[str(warmpass_executable), *arguments],
+            start_calendar_interval=[
+                _to_launchd_interval(trigger) for trigger in triggers
+            ],
+            run_at_load=False,
+            keep_alive=False,
+            working_directory=str(home),
+            environment_variables={
                 "HOME": str(home),
-                "PATH": executable_search_path,
+                "PATH": warmpass_executable_search_path,
             },
-            StandardOutPath=str(log_directory / f"{schedule.id}.out.log"),
-            StandardErrorPath=str(log_directory / f"{schedule.id}.err.log"),
+            standard_out_path=str(log_directory / f"{schedule_id}.out.log"),
+            standard_error_path=str(log_directory / f"{schedule_id}.err.log"),
         )
 
+    def to_plist_dict(self) -> dict[str, object]:
+        return self.model_dump(by_alias=True)
 
-def _build_calendar_interval(
-    trigger: WarmupScheduleTrigger,
-) -> list[dict[str, int]]:
-    match trigger:
-        case DailyTrigger(window=window):
-            return _build_hourly_intervals(window)
-
-        case WeeklyTrigger(window=window, days=days):
-            return _build_hourly_intervals(window, days)
-
-        case _:
-            assert_never(trigger)
-
-
-def _build_hourly_intervals(
-    window: HourlyWindow,
-    days: list[WeekDay] | None = None,
-) -> list[dict[str, int]]:
-    minutes_per_day = 24 * 60
-    start = (
-        window.from_.hour * 60 + window.from_.minute if window.from_ is not None else 0
-    )
-    end = (
-        window.until.hour * 60 + window.until.minute
-        if window.until is not None
-        else minutes_per_day
-    )
-
-    if end < start:
-        end += minutes_per_day
-
-    intervals: list[dict[str, int]] = []
-
-    for minute in range(start, end, window.every * 60):
-        minute_of_day = minute % minutes_per_day
-        hour, minute_of_hour = divmod(minute_of_day, 60)
-
-        if days is None:
-            intervals.append(
-                {
-                    "Hour": hour,
-                    "Minute": minute_of_hour,
-                }
-            )
-        else:
-            for day in days:
-                intervals.append(
-                    {
-                        "Hour": hour,
-                        "Minute": minute_of_hour,
-                        "Weekday": (int(day) + 1) % 7,
-                    }
+    def to_scheduled_triggers(self) -> list[ScheduledTrigger]:
+        triggers: list[ScheduledTrigger] = []
+        for interval in self.start_calendar_interval:
+            if "Hour" not in interval or "Minute" not in interval:
+                raise ValueError(
+                    "Launchd calendar interval must include 'Hour' and 'Minute'."
                 )
 
-    return intervals
+            allowed_keys = {"Hour", "Minute", "Weekday"}
+            if set(interval.keys()) - allowed_keys:
+                raise ValueError(
+                    f"Unsupported keys in launchd calendar interval: {set(interval.keys()) - allowed_keys}"
+                )
+
+            raw_weekday = interval.get("Weekday")
+            if raw_weekday is not None and not (0 <= raw_weekday <= 7):
+                raise ValueError(f"Invalid launchd Weekday: {raw_weekday}")
+
+            weekday = (
+                WeekDay((raw_weekday - 1) % 7) if raw_weekday is not None else None
+            )
+            triggers.append(
+                ScheduledTrigger(
+                    hour=interval["Hour"],
+                    minute=interval["Minute"],
+                    weekday=weekday,
+                )
+            )
+        return triggers
 
 
-def build_label(schedule_id: UUID) -> str:
+def _to_launchd_interval(trigger: ScheduledTrigger) -> dict[str, int]:
+    interval: dict[str, int] = {
+        "Hour": trigger.hour,
+        "Minute": trigger.minute,
+    }
+    if trigger.weekday is not None:
+        interval["Weekday"] = (int(trigger.weekday) + 1) % 7
+    return interval
+
+
+def build_label(schedule_id: UUID | str) -> str:
     return f"{LABEL_PREFIX}{schedule_id}"
 
 

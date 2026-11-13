@@ -6,17 +6,17 @@ from rich.text import Text
 
 from warmpass.scheduling.models import (
     DailyTrigger,
+    ScheduleTrigger,
     WarmupSchedule,
-    WarmupScheduleTrigger,
     WeeklyTrigger,
 )
 
 
-def format_trigger(trigger: WarmupScheduleTrigger) -> str:
+def format_trigger(trigger: ScheduleTrigger) -> str:
     window = trigger.window
 
-    start = window.from_.strftime("%H:%M") if window.from_ else "00:00"
-    end = window.until.strftime("%H:%M") if window.until else "24:00"
+    start = window.from_.strftime("%H:%M") if window.from_ is not None else "00:00"
+    end = window.until.strftime("%H:%M") if window.until is not None else "24:00"
 
     if (
         window.from_ is not None

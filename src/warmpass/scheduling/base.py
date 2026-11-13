@@ -1,20 +1,29 @@
 from typing import Protocol
 from uuid import UUID
 
-from warmpass.scheduling.models import WarmupSchedule
+from warmpass.errors import WarmpassError
+from warmpass.scheduling.models import OSJob, ScheduledTrigger
 
 
-class WarmupSchedulerError(RuntimeError):
-    """Error raised when a warmup scheduler operation fails."""
+class SchedulerError(WarmpassError):
+    """Base class for all scheduler errors."""
 
 
-class WarmupScheduler(Protocol):
-    def add(self, schedule: WarmupSchedule) -> None: ...
+class OSJobScheduler(Protocol):
+    """Protocol for an OS-native job scheduler (e.g., launchd, Task Scheduler, systemd/cron)."""
 
-    def remove(self, schedule_id: UUID) -> None: ...
+    def register_job(
+        self,
+        schedule_id: UUID,
+        *,
+        arguments: list[str],
+        triggers: list[ScheduledTrigger],
+    ) -> None: ...
 
-    def clear(self) -> None: ...
+    def unregister_job(self, schedule_id: UUID) -> None: ...
 
-    def get(self, schedule_id: UUID) -> WarmupSchedule | None: ...
+    def get_job(self, schedule_id: UUID) -> OSJob | None: ...
 
-    def get_list(self) -> list[WarmupSchedule]: ...
+    def list_job_ids(self) -> set[UUID]: ...
+
+    def clear_jobs(self) -> None: ...

@@ -5,6 +5,7 @@ from uuid import UUID
 
 from pydantic import ValidationError
 
+from warmpass.scheduling.base import SchedulerError
 from warmpass.scheduling.models import WarmupSchedule
 
 
@@ -19,20 +20,70 @@ class WarmupScheduleStore:
             data = schedule_path.read_text(encoding="utf-8")
         except FileNotFoundError:
             return None
+        except OSError as exc:
+            raise SchedulerError(
+                f"Cannot read saved schedule {schedule_id}: {exc}"
+            ) from exc
 
-        schedule = WarmupSchedule.model_validate_json(data)
+        try:
+            schedule = WarmupSchedule.model_validate_json(data)
+        except ValidationError as exc:
+            raise SchedulerError(
+                f"Cannot read saved schedule {schedule_id}: invalid JSON record at {schedule_path}."
+            ) from exc
+
         if schedule.id != schedule_id:
-            raise ValueError(
-                f"Schedule ID mismatch: expected {schedule_id}, got {schedule.id}"
+            raise SchedulerError(
+                f"Cannot read saved schedule {schedule_id}: "
+                f"record ID mismatch (expected {schedule_id}, got {schedule.id})."
             )
 
         return schedule
 
-    def write(self, schedule: WarmupSchedule) -> None:
+    def list_ids(self) -> set[UUID]:
+        try:
+            entries = list(self._directory.iterdir())
+        except FileNotFoundError:
+            return set()
+        except OSError as exc:
+            raise SchedulerError(
+                f"Cannot list schedule files in {self._directory}: {exc}"
+            ) from exc
+
+        ids: set[UUID] = set()
+        for entry in entries:
+            if entry.name.startswith(".") or entry.suffix != ".json":
+                continue
+
+            try:
+                schedule_id = UUID(entry.stem)
+            except ValueError as exc:
+                raise SchedulerError(f"Invalid schedule filename: {entry}") from exc
+            if entry.name != f"{schedule_id}.json":
+                raise SchedulerError(f"Invalid schedule filename: {entry}")
+
+            ids.add(schedule_id)
+
+        return ids
+
+    def write(
+        self,
+        schedule: WarmupSchedule,
+        *,
+        overwrite: bool = True,
+    ) -> None:
         schedule_path = self._schedule_file_path(schedule.id)
+        if not overwrite and schedule_path.exists():
+            raise SchedulerError(f"Schedule {schedule.id} already exists in the store.")
+
         data = schedule.model_dump_json(indent=4)
 
-        self._ensure_directory_exists()
+        try:
+            self._directory.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise SchedulerError(
+                f"Could not create schedule store directory {self._directory}: {exc}"
+            ) from exc
 
         temp_path: Path | None = None
         try:
@@ -47,7 +98,11 @@ class WarmupScheduleStore:
                 temp_path = Path(temp_file.name)
                 temp_file.write(data)
 
-            os.link(temp_path, schedule_path)
+            os.replace(temp_path, schedule_path)
+        except OSError as exc:
+            raise SchedulerError(
+                f"Could not save schedule {schedule.id}: {exc}"
+            ) from exc
 
         finally:
             if temp_path is not None:
@@ -55,42 +110,38 @@ class WarmupScheduleStore:
 
     def remove(self, schedule_id: UUID) -> None:
         schedule_path = self._schedule_file_path(schedule_id)
-        schedule_path.unlink(missing_ok=True)
-
-    def get_list(self) -> list[WarmupSchedule]:
-        schedules: list[WarmupSchedule] = []
-
         try:
-            schedule_files = sorted(
-                path
-                for path in self._directory.iterdir()
-                if path.is_file() and path.suffix == ".json"
-            )
+            schedule_path.unlink(missing_ok=True)
+        except OSError as exc:
+            raise SchedulerError(
+                f"Could not remove schedule record {schedule_id}: {exc}"
+            ) from exc
 
+    def clear(self) -> None:
+        try:
+            entries = list(self._directory.iterdir())
         except FileNotFoundError:
-            return schedules
+            return
+        except OSError as exc:
+            raise SchedulerError(
+                f"Cannot list schedule files in {self._directory}: {exc}"
+            ) from exc
 
-        for schedule_file in schedule_files:
+        failures: list[str] = []
+        for entry in sorted(entries):
+            if entry.name.startswith(".") or entry.suffix != ".json":
+                continue
+
             try:
-                schedule_id = UUID(schedule_file.stem)
-            except ValueError as exc:
-                raise ValueError(f"Invalid schedule filename: {schedule_file}") from exc
+                entry.unlink(missing_ok=True)
+            except OSError as exc:
+                failures.append(f"Cannot remove {entry}: {exc}")
 
-            if schedule_file.name != f"{schedule_id}.json":
-                raise ValueError(f"Invalid schedule filename: {schedule_file}")
-
-            try:
-                schedule = self.read(schedule_id)
-            except ValidationError as exc:
-                raise ValueError(f"Invalid schedule record: {schedule_file}") from exc
-
-            if schedule is not None:
-                schedules.append(schedule)
-
-        return schedules
+        if failures:
+            raise SchedulerError(
+                "Some schedule record files could not be removed: "
+                + "; ".join(failures)
+            )
 
     def _schedule_file_path(self, schedule_id: UUID) -> Path:
         return self._directory / f"{schedule_id}.json"
-
-    def _ensure_directory_exists(self) -> None:
-        self._directory.mkdir(parents=True, exist_ok=True)

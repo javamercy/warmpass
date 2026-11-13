@@ -1,24 +1,19 @@
 import subprocess
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
-from typing import Final, Literal, assert_never, cast
+from typing import Final, Literal, Self, assert_never, cast
 from uuid import UUID
 from xml.etree import ElementTree as ET
 
 from pydantic import BaseModel
 
-from warmpass.scheduling.models import (
-    DailyTrigger,
-    HourlyWindow,
-    WarmupSchedule,
-    WarmupScheduleTrigger,
-    WeekDay,
-    WeeklyTrigger,
-)
+from warmpass.scheduling.models import OSJob, ScheduledTrigger, WeekDay
 
+TASK_NAME_PREFIX: Final[str] = "dev.warmpass.schedule."
 _TASK_XML_NAMESPACE: Final[str] = (
     "http://schemas.microsoft.com/windows/2004/02/mit/task"
 )
+_NS: Final[dict[str, str]] = {"t": _TASK_XML_NAMESPACE}
 
 
 class DailyCalendarTrigger(BaseModel):
@@ -63,88 +58,71 @@ class TaskConfiguration(BaseModel):
     settings: TaskSettings
 
     @classmethod
-    def from_schedule(
+    def from_job(
         cls,
-        schedule: WarmupSchedule,
+        schedule_id: UUID,
         *,
-        executable: Path,
+        warmpass_executable: Path,
+        arguments: list[str],
+        triggers: list[ScheduledTrigger],
         home: Path,
         user_id: str,
         activation_date: date,
-    ) -> TaskConfiguration:
+    ) -> Self:
         return cls(
-            name=build_task_name(schedule.id),
-            triggers=TaskConfiguration._build_calendar_triggers(
-                schedule.trigger, activation_date
-            ),
+            name=build_task_name(schedule_id),
+            triggers=_to_calendar_triggers(triggers, activation_date),
             action=ExecAction(
-                executable=executable,
-                arguments=["warmup", "--agent", schedule.agent.value],
+                executable=warmpass_executable,
+                arguments=arguments,
                 working_directory=home,
             ),
             principal=TaskPrincipal(user_id=user_id),
             settings=TaskSettings(),
         )
 
-    @staticmethod
-    def _build_calendar_triggers(
-        trigger: WarmupScheduleTrigger,
-        activation_date: date,
-    ) -> list[CalendarTrigger]:
-        times = TaskConfiguration._build_window_times(trigger.window)
 
-        match trigger:
-            case DailyTrigger():
-                return [
-                    DailyCalendarTrigger(
-                        start_boundary=datetime.combine(activation_date, run_time),
-                    )
-                    for run_time in times
-                ]
+def _to_calendar_triggers(
+    triggers: list[ScheduledTrigger],
+    activation_date: date,
+) -> list[CalendarTrigger]:
+    if not triggers:
+        return []
 
-            case WeeklyTrigger(days=days):
-                return [
-                    WeeklyCalendarTrigger(
-                        start_boundary=datetime.combine(activation_date, run_time),
-                        days=days,
-                    )
-                    for run_time in times
-                ]
+    if all(trigger.weekday is None for trigger in triggers):
+        return [
+            DailyCalendarTrigger(
+                start_boundary=datetime.combine(
+                    activation_date,
+                    time(hour=trigger.hour, minute=trigger.minute),
+                )
+            )
+            for trigger in triggers
+        ]
 
-            case _:
-                assert_never(trigger)
+    weekly_by_time: dict[tuple[int, int], list[WeekDay]] = {}
+    for trigger in triggers:
+        if trigger.weekday is None:
+            raise ValueError(
+                "Cannot mix daily and weekly triggers in one task configuration."
+            )
+        key = (trigger.hour, trigger.minute)
+        weekly_by_time.setdefault(key, []).append(trigger.weekday)
 
-    @staticmethod
-    def _build_window_times(
-        window: HourlyWindow,
-    ) -> list[time]:
-        minutes_per_day = 24 * 60
-        start = (
-            window.from_.hour * 60 + window.from_.minute
-            if window.from_ is not None
-            else 0
+    return [
+        WeeklyCalendarTrigger(
+            start_boundary=datetime.combine(
+                activation_date,
+                time(hour=hour, minute=minute),
+            ),
+            days=days,
         )
-        end = (
-            window.until.hour * 60 + window.until.minute
-            if window.until is not None
-            else minutes_per_day
-        )
-
-        if end < start:
-            end += minutes_per_day
-
-        times: list[time] = []
-
-        for minute in range(start, end, window.every * 60):
-            minute_of_day = minute % minutes_per_day
-            hour, minute_of_hour = divmod(minute_of_day, 60)
-            times.append(time(hour=hour, minute=minute_of_hour))
-
-        return times
+        for (hour, minute), days in weekly_by_time.items()
+    ]
 
 
-def build_task_name(schedule_id: UUID) -> str:
-    return f"dev.warmpass.schedule.{schedule_id}"
+def build_task_name(schedule_id: UUID | str) -> str:
+    return f"{TASK_NAME_PREFIX}{schedule_id}"
 
 
 def build_task_xml(configuration: TaskConfiguration) -> bytes:
@@ -156,6 +134,71 @@ def build_task_xml(configuration: TaskConfiguration) -> bytes:
     _build_action(task, configuration.action)
 
     return cast(bytes, ET.tostring(task, encoding="utf-16", xml_declaration=True))
+
+
+def parse_task_xml(schedule_id: UUID, xml_content: str | bytes) -> OSJob:
+    root = ET.fromstring(xml_content)
+
+    command_element = root.find("t:Actions/t:Exec/t:Command", _NS)
+    if (
+        command_element is None
+        or command_element.text is None
+        or not command_element.text.strip()
+    ):
+        raise ValueError("Task XML is missing an Exec Command.")
+
+    arguments_element = root.find("t:Actions/t:Exec/t:Arguments", _NS)
+    arguments_text = (
+        arguments_element.text.strip()
+        if arguments_element is not None and arguments_element.text is not None
+        else ""
+    )
+    command = [
+        command_element.text.strip(),
+        *(arguments_text.split() if arguments_text else []),
+    ]
+
+    triggers: list[ScheduledTrigger] = []
+    for calendar_trigger in root.findall("t:Triggers/t:CalendarTrigger", _NS):
+        boundary_element = calendar_trigger.find("t:StartBoundary", _NS)
+        if boundary_element is None or boundary_element.text is None:
+            raise ValueError("CalendarTrigger is missing StartBoundary.")
+
+        start_boundary = datetime.fromisoformat(boundary_element.text.strip())
+        hour = start_boundary.hour
+        minute = start_boundary.minute
+
+        schedule_by_day = calendar_trigger.find("t:ScheduleByDay", _NS)
+        schedule_by_week = calendar_trigger.find("t:ScheduleByWeek", _NS)
+
+        if schedule_by_day is not None:
+            triggers.append(ScheduledTrigger(hour=hour, minute=minute))
+        elif schedule_by_week is not None:
+            days_element = schedule_by_week.find("t:DaysOfWeek", _NS)
+            if days_element is None or len(days_element) == 0:
+                raise ValueError("ScheduleByWeek is missing DaysOfWeek entries.")
+
+            for day_element in days_element:
+                tag_name = day_element.tag.rsplit("}", 1)[-1].upper()
+                try:
+                    weekday = WeekDay[tag_name]
+                except KeyError as exc:
+                    raise ValueError(
+                        f"Unsupported weekday in Task XML: {tag_name}"
+                    ) from exc
+                triggers.append(
+                    ScheduledTrigger(hour=hour, minute=minute, weekday=weekday)
+                )
+        else:
+            raise ValueError(
+                "CalendarTrigger must contain ScheduleByDay or ScheduleByWeek."
+            )
+
+    return OSJob(
+        schedule_id=schedule_id,
+        command=command,
+        triggers=triggers,
+    )
 
 
 def _build_triggers(task: ET.Element, triggers: list[CalendarTrigger]) -> None:

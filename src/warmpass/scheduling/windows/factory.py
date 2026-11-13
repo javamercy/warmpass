@@ -1,20 +1,23 @@
 import ctypes
-import os
+import sys
 from ctypes import wintypes
 from pathlib import Path
 
-from warmpass.scheduling.base import WarmupScheduler
+from warmpass.scheduling.base import OSJobScheduler, SchedulerError
 from warmpass.scheduling.executable import (
     find_warmpass_executable,
-    get_executable_search_path,
+    get_warmpass_executable_search_path,
 )
-from warmpass.scheduling.windows.scheduler import WindowsTaskSchedulerWarmupScheduler
+from warmpass.scheduling.windows.scheduler import WindowsTaskScheduler
 
 _NAME_SAM_COMPATIBLE = 2
 _ERROR_MORE_DATA = 234
 
 
 def _get_current_user_id() -> str:
+    if sys.platform != "win32":
+        raise SchedulerError("Windows Task Scheduler is only supported on Windows.")
+
     secur32 = ctypes.WinDLL("secur32", use_last_error=True)
     get_user_name = secur32.GetUserNameExW
     get_user_name.argtypes = [
@@ -27,20 +30,28 @@ def _get_current_user_id() -> str:
 
     size = wintypes.ULONG(0)
 
-    if not get_user_name(_NAME_SAM_COMPATIBLE, None, ctypes.byref(size)):
-        error = ctypes.get_last_error()
-        if error != _ERROR_MORE_DATA:
-            raise ctypes.WinError(error)
+    try:
+        if not get_user_name(_NAME_SAM_COMPATIBLE, None, ctypes.byref(size)):
+            error = ctypes.get_last_error()
+            if error != _ERROR_MORE_DATA:
+                raise ctypes.WinError(error)
 
-    buffer = ctypes.create_unicode_buffer(size.value)
+        buffer = ctypes.create_unicode_buffer(size.value)
 
-    if not get_user_name(_NAME_SAM_COMPATIBLE, buffer, ctypes.byref(size)):
-        raise ctypes.WinError(ctypes.get_last_error())
+        if not get_user_name(_NAME_SAM_COMPATIBLE, buffer, ctypes.byref(size)):
+            raise ctypes.WinError(ctypes.get_last_error())
 
-    return str(buffer.value)
+        return str(buffer.value)
+    except OSError as exc:
+        raise SchedulerError(
+            f"Could not determine current Windows user ID: {exc}"
+        ) from exc
 
 
 def _get_system_directory() -> Path:
+    if sys.platform != "win32":
+        raise SchedulerError("Windows Task Scheduler is only supported on Windows.")
+
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     get_system_directory = kernel32.GetSystemDirectoryW
     get_system_directory.argtypes = [wintypes.LPWSTR, wintypes.UINT]
@@ -50,35 +61,27 @@ def _get_system_directory() -> Path:
     length = get_system_directory(buffer, len(buffer))
 
     if length == 0:
-        raise ctypes.WinError(ctypes.get_last_error())
+        error = ctypes.WinError(ctypes.get_last_error())
+        raise SchedulerError(
+            f"Could not determine Windows system directory: {error}"
+        ) from error
 
     if length >= len(buffer):
-        raise RuntimeError("Windows system directory path is too long.")
+        raise SchedulerError("Windows system directory path is too long.")
 
     return Path(buffer.value)
 
 
-def _get_store_directory() -> Path:
-    local_app_data = os.getenv("LOCALAPPDATA")
-
-    if not local_app_data or not Path(local_app_data).is_absolute():
-        raise RuntimeError("LOCALAPPDATA is missing or is not an absolute path.")
-
-    return Path(local_app_data) / "Warmup"
-
-
-def create_windows_warmup_scheduler() -> WarmupScheduler:
-    search_path = get_executable_search_path()
-    executable = find_warmpass_executable(search_path)
+def create_windows_warmup_scheduler() -> OSJobScheduler:
+    search_path = get_warmpass_executable_search_path()
+    warmpass_executable = find_warmpass_executable(search_path=search_path)
 
     schtasks_executable = _get_system_directory() / "schtasks.exe"
     if not schtasks_executable.is_file():
-        raise RuntimeError(f"Cannot find schtasks.exe: {schtasks_executable}")
+        raise SchedulerError(f"Cannot find schtasks.exe: {schtasks_executable}")
 
-    return WindowsTaskSchedulerWarmupScheduler(
-        executable=executable,
-        home=Path.home(),
-        user_id=_get_current_user_id(),
-        store_directory=_get_store_directory(),
+    return WindowsTaskScheduler(
+        warmpass_executable=warmpass_executable,
         schtasks_executable=schtasks_executable,
+        user_id=_get_current_user_id(),
     )

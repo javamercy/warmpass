@@ -9,24 +9,24 @@ from warmpass.agents.base import WarmupError
 from warmpass.agents.models import AgentType
 from warmpass.warmup.factory import create_warmup_service
 
-app = typer.Typer(help="Warm up a specific agent immediately")
+app = typer.Typer(help="Warm up a specific agent immediately.")
 
 
 def _timestamp() -> str:
     return datetime.now().astimezone().isoformat(timespec="seconds")
 
 
-@app.command(help="Warm up a specific agent immediately.")
+@app.command("warmup", help="Warm up a specific agent immediately.")
 def warmup(
     agent: Annotated[AgentType, typer.Option(help="The name of the agent to warm up.")],
 ) -> None:
-    service = create_warmup_service(agent)
     console = Console(stderr=True)
 
     typer.echo(f"{_timestamp()} INFO Warmup started: agent={agent.value}")
     started_at = perf_counter()
 
     try:
+        service = create_warmup_service(agent)
         if console.is_terminal:
             with console.status(
                 f"[bold green]Warming up {agent.value}...", spinner="dots"

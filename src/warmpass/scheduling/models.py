@@ -82,7 +82,7 @@ class WeeklyTrigger(BaseModel):
         return self
 
 
-type WarmupScheduleTrigger = Annotated[
+type ScheduleTrigger = Annotated[
     DailyTrigger | WeeklyTrigger, Field(discriminator="kind")
 ]
 
@@ -90,4 +90,16 @@ type WarmupScheduleTrigger = Annotated[
 class WarmupSchedule(BaseModel):
     id: UUID
     agent: AgentType
-    trigger: WarmupScheduleTrigger
+    trigger: ScheduleTrigger
+
+
+class ScheduledTrigger(BaseModel):
+    hour: Annotated[int, Field(strict=True, ge=0, le=23)]
+    minute: Annotated[int, Field(strict=True, ge=0, le=59)]
+    weekday: WeekDay | None = None
+
+
+class OSJob(BaseModel):
+    schedule_id: UUID
+    command: list[str]
+    triggers: list[ScheduledTrigger]
