@@ -4,6 +4,7 @@ The adapter has no POSIX-only code, so these tests run on every OS.
 """
 
 import subprocess
+import sys
 from pathlib import Path
 from uuid import UUID
 
@@ -311,3 +312,56 @@ def test_clear_attempts_every_task_and_reports_the_ones_that_failed(
     assert len(schtasks.deleted_names()) == 2
     assert build_task_name(SCHEDULE_ID) in str(exc_info.value)
     assert build_task_name(OTHER_ID) in str(exc_info.value)
+
+
+# --- the adapter's own process handling, against a stand-in schtasks ---------
+
+
+def write_stand_in_schtasks(tmp_path: Path, *, exit_status: int, stderr: str) -> Path:
+    args_file = tmp_path / "schtasks.args"
+    body = (
+        "import pathlib, sys\n"
+        f"pathlib.Path({str(args_file)!r}).write_text("
+        "'\\n'.join(sys.argv[1:]), encoding='utf-8')\n"
+        f"sys.stderr.write({stderr!r})\n"
+        f"raise SystemExit({exit_status})\n"
+    )
+    if sys.platform == "win32":
+        script_py = tmp_path / "schtasks_stand_in.py"
+        script_py.write_text(body, encoding="utf-8")
+        wrapper = tmp_path / "schtasks.cmd"
+        wrapper.write_text(f'@"{sys.executable}" "{script_py}" %*\n', encoding="utf-8")
+        return wrapper
+
+    script = tmp_path / "schtasks"
+    script.write_text(f"#!{sys.executable}\n{body}", encoding="utf-8")
+    script.chmod(0o755)
+    return script
+
+
+def test_stand_in_schtasks_receives_the_delete_arguments(tmp_path: Path) -> None:
+    scheduler = WindowsTaskScheduler(
+        warmpass_executable=Path("/opt/warmpass/warmpass.exe"),
+        schtasks_executable=write_stand_in_schtasks(tmp_path, exit_status=0, stderr=""),
+        user_id="DOMAIN\\user",
+        home=tmp_path / "home",
+    )
+
+    scheduler.unregister_job(SCHEDULE_ID)
+
+    arguments = (tmp_path / "schtasks.args").read_text(encoding="utf-8").splitlines()
+    assert arguments == ["/delete", "/tn", build_task_name(SCHEDULE_ID), "/f"]
+
+
+def test_stand_in_schtasks_failure_surfaces_its_stderr(tmp_path: Path) -> None:
+    scheduler = WindowsTaskScheduler(
+        warmpass_executable=Path("/opt/warmpass/warmpass.exe"),
+        schtasks_executable=write_stand_in_schtasks(
+            tmp_path, exit_status=1, stderr="Access is denied"
+        ),
+        user_id="DOMAIN\\user",
+        home=tmp_path / "home",
+    )
+
+    with pytest.raises(SchedulerError, match="Access is denied"):
+        scheduler.unregister_job(SCHEDULE_ID)

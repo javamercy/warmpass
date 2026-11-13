@@ -48,10 +48,25 @@ def test_exit_zero_with_empty_reply_is_a_failure(code: str) -> None:
         run(python_agent(code))
 
 
-def test_nonzero_exit_reports_code_and_prefers_stderr_detail() -> None:
-    code = "import sys; print('out'); print('quota exhausted', file=sys.stderr); sys.exit(7)"
-
-    with pytest.raises(WarmupError, match="exit code 7: quota exhausted"):
+@pytest.mark.parametrize(
+    ("code", "expected"),
+    [
+        pytest.param(
+            "import sys; print('out'); print('quota exhausted', file=sys.stderr); sys.exit(7)",
+            "exit code 7: quota exhausted",
+            id="prefers-stderr",
+        ),
+        pytest.param(
+            "import sys; print('not logged in'); sys.exit(2)",
+            "exit code 2: not logged in",
+            id="falls-back-to-stdout",
+        ),
+    ],
+)
+def test_nonzero_exit_reports_code_and_prefers_stderr_detail(
+    code: str, expected: str
+) -> None:
+    with pytest.raises(WarmupError, match=expected):
         run(python_agent(code))
 
 

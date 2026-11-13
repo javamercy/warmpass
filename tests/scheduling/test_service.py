@@ -1,6 +1,7 @@
 """Schedule service: record-to-triggers expansion and record/OS coordination."""
 
 from datetime import time
+from pathlib import Path
 from uuid import UUID
 
 import pytest
@@ -136,15 +137,32 @@ def test_add_registers_one_job_with_all_triggers_and_saves_the_record(
     assert [(t.hour, t.minute) for t in job.triggers] == [(9, 0), (11, 0)]
 
 
-def test_add_failed_registration_raises_and_registers_nothing(
-    scheduler_service: SchedulerService, fake_scheduler: FakeOSJobScheduler
+def test_add_retains_the_record_when_job_registration_fails(
+    scheduler_service: SchedulerService,
+    fake_scheduler: FakeOSJobScheduler,
+    schedule_store: WarmupScheduleStore,
 ) -> None:
     fake_scheduler.failures["register_job"] = SchedulerError("launchd refused")
 
     with pytest.raises(SchedulerError, match="launchd refused"):
         scheduler_service.add(AgentType.CODEX, make_trigger())
 
-    assert fake_scheduler.jobs == {}
+    assert len(schedule_store.list_ids()) == 1
+
+
+def test_add_does_not_register_a_job_when_the_record_cannot_be_written(
+    tmp_path: Path, fake_scheduler: FakeOSJobScheduler
+) -> None:
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_text("", encoding="utf-8")
+    service = SchedulerService(
+        store=WarmupScheduleStore(blocker / "schedules"), scheduler=fake_scheduler
+    )
+
+    with pytest.raises(SchedulerError, match="Could not create schedule store"):
+        service.add(AgentType.CODEX, make_trigger())
+
+    assert fake_scheduler.calls == []
 
 
 def test_remove_deletes_the_job_and_the_record(
