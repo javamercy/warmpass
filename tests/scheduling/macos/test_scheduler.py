@@ -19,9 +19,8 @@ from warmpass.scheduling.macos.plist import build_label, build_plist_path
 from warmpass.scheduling.macos.scheduler import MacOSLaunchdScheduler
 from warmpass.scheduling.models import ScheduledTrigger, WeekDay
 
-pytestmark = pytest.mark.skipif(
-    sys.platform == "win32", reason="The launchd adapter uses os.getuid()"
-)
+if sys.platform == "win32":
+    pytest.skip("The launchd adapter uses os.getuid()", allow_module_level=True)
 
 SCHEDULE_ID = UUID("e44215ce-26c9-41c4-96d7-67f0940496e4")
 OTHER_ID = UUID("0a6f1d0e-3b0c-4a53-9d63-2f5d6f9a7b11")
