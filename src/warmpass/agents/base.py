@@ -10,7 +10,7 @@ class WarmupError(WarmpassError):
 
 
 class WarmupAgent(Protocol):
-    def warmup(self, prompt: str) -> None: ...
+    def warmup(self, prompt: str, model: str | None = None) -> None: ...
 
 
 def run_agent_warmup_process(

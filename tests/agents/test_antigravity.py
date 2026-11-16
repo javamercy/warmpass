@@ -14,8 +14,6 @@ def test_antigravity_warmup_uses_json_output_and_no_slash_commands(
         "agy",
         "--prompt",
         "say OK",
-        "--model",
-        "gemini-3.8-flash-low",
         "--output-format",
         "json",
         "--print-timeout",
@@ -24,6 +22,16 @@ def test_antigravity_warmup_uses_json_output_and_no_slash_commands(
     ]
     assert call.options["stdin"] is DEVNULL
     assert call.options["timeout"] == 60
+
+
+def test_antigravity_warmup_passes_the_selected_model(
+    agent_process: FakeAgentProcess,
+) -> None:
+    AntigravityWarmupAgent().warmup("say OK", model="gemini-3.8-flash-low")
+
+    (call,) = agent_process.calls
+    assert call.command[-2:] == ["--model", "gemini-3.8-flash-low"]
+    assert call.command.count("--model") == 1
 
 
 def test_antigravity_warmup_keeps_agent_and_process_timeouts_in_step(

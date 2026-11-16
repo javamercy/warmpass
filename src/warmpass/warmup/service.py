@@ -9,5 +9,5 @@ class WarmupService:
     def __init__(self, agent: WarmupAgent) -> None:
         self._agent = agent
 
-    def warmup(self) -> None:
-        self._agent.warmup(WARMUP_PROMPT)
+    def warmup(self, model: str | None = None) -> None:
+        self._agent.warmup(WARMUP_PROMPT, model)

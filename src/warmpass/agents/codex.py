@@ -11,7 +11,7 @@ class CodexWarmupAgent(WarmupAgent):
         self._executable = executable
         self._timeout_seconds = timeout_seconds
 
-    def warmup(self, prompt: str) -> None:
+    def warmup(self, prompt: str, model: str | None = None) -> None:
         command = [
             self._executable,
             "exec",
@@ -21,6 +21,10 @@ class CodexWarmupAgent(WarmupAgent):
             "--ephemeral",
             prompt,
         ]
+        if model is not None:
+            command.append("--model")
+            command.append(model)
+
         run_agent_warmup_process(
             command,
             executable=self._executable,

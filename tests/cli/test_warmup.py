@@ -31,6 +31,22 @@ def test_successful_warmup_exits_zero_and_logs_to_stdout(
     (call,) = agent_process.calls
     assert call.command[0] == executable
     assert WARMUP_PROMPT in call.command
+    assert "--model" not in call.command
+
+
+@pytest.mark.parametrize("agent", ["codex", "antigravity"])
+def test_selected_model_is_passed_to_the_agent(
+    agent_process: FakeAgentProcess, agent: str
+) -> None:
+    result = runner.invoke(
+        app, ["warmup", "--agent", agent, "--model", "custom-model"], input=""
+    )
+
+    assert result.exit_code == 0, result.output
+    assert result.stderr == ""
+    (call,) = agent_process.calls
+    assert WARMUP_PROMPT in call.command
+    assert call.command[-2:] == ["--model", "custom-model"]
 
 
 @pytest.mark.parametrize(

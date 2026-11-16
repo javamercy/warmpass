@@ -23,6 +23,16 @@ def test_codex_warmup_runs_read_only_and_ephemeral(
     assert call.options["timeout"] == 60
 
 
+def test_codex_warmup_passes_the_selected_model(
+    agent_process: FakeAgentProcess,
+) -> None:
+    CodexWarmupAgent().warmup("say OK", model="custom-model")
+
+    (call,) = agent_process.calls
+    assert call.command[-2:] == ["--model", "custom-model"]
+    assert call.command.count("--model") == 1
+
+
 def test_codex_warmup_uses_configured_executable_and_timeout(
     agent_process: FakeAgentProcess,
 ) -> None:

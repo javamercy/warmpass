@@ -122,18 +122,34 @@ def make_trigger() -> DailyTrigger:
     return daily(from_=time(9), until=time(13), every=2)
 
 
+@pytest.mark.parametrize(
+    ("model", "expected_arguments"),
+    [
+        pytest.param(None, ["warmup", "--agent", "codex"], id="agent-default"),
+        pytest.param(
+            "custom-model",
+            ["warmup", "--agent", "codex", "--model", "custom-model"],
+            id="selected-model",
+        ),
+    ],
+)
 def test_add_registers_one_job_with_all_triggers_and_saves_the_record(
     scheduler_service: SchedulerService,
     fake_scheduler: FakeOSJobScheduler,
     schedule_store: WarmupScheduleStore,
+    model: str | None,
+    expected_arguments: list[str],
 ) -> None:
-    schedule = scheduler_service.add(AgentType.CODEX, make_trigger())
+    schedule = scheduler_service.add(
+        agent=AgentType.CODEX, trigger=make_trigger(), model=model
+    )
 
     assert schedule.id.version == 4
+    assert schedule.model == model
     assert schedule_store.read(schedule.id) == schedule
     (job,) = fake_scheduler.jobs.values()
     assert job.schedule_id == schedule.id
-    assert job.command[1:] == ["warmup", "--agent", "codex"]
+    assert job.command[1:] == expected_arguments
     assert [(t.hour, t.minute) for t in job.triggers] == [(9, 0), (11, 0)]
 
 
@@ -145,7 +161,7 @@ def test_add_retains_the_record_when_job_registration_fails(
     fake_scheduler.failures["register_job"] = SchedulerError("launchd refused")
 
     with pytest.raises(SchedulerError, match="launchd refused"):
-        scheduler_service.add(AgentType.CODEX, make_trigger())
+        scheduler_service.add(agent=AgentType.CODEX, trigger=make_trigger())
 
     assert len(schedule_store.list_ids()) == 1
 
@@ -160,7 +176,7 @@ def test_add_does_not_register_a_job_when_the_record_cannot_be_written(
     )
 
     with pytest.raises(SchedulerError, match="Could not create schedule store"):
-        service.add(AgentType.CODEX, make_trigger())
+        service.add(agent=AgentType.CODEX, trigger=make_trigger())
 
     assert fake_scheduler.calls == []
 
@@ -170,7 +186,7 @@ def test_remove_deletes_the_job_and_the_record(
     fake_scheduler: FakeOSJobScheduler,
     schedule_store: WarmupScheduleStore,
 ) -> None:
-    schedule = scheduler_service.add(AgentType.CODEX, make_trigger())
+    schedule = scheduler_service.add(agent=AgentType.CODEX, trigger=make_trigger())
 
     scheduler_service.remove(schedule.id)
 
@@ -192,7 +208,7 @@ def test_remove_keeps_the_record_when_the_job_cannot_be_unregistered(
     fake_scheduler: FakeOSJobScheduler,
     schedule_store: WarmupScheduleStore,
 ) -> None:
-    schedule = scheduler_service.add(AgentType.CODEX, make_trigger())
+    schedule = scheduler_service.add(agent=AgentType.CODEX, trigger=make_trigger())
     fake_scheduler.failures["unregister_job"] = SchedulerError("bootout failed")
 
     with pytest.raises(SchedulerError, match="bootout failed"):
@@ -206,8 +222,8 @@ def test_clear_removes_all_jobs_and_records(
     fake_scheduler: FakeOSJobScheduler,
     schedule_store: WarmupScheduleStore,
 ) -> None:
-    scheduler_service.add(AgentType.CODEX, make_trigger())
-    scheduler_service.add(AgentType.ANTIGRAVITY, make_trigger())
+    scheduler_service.add(agent=AgentType.CODEX, trigger=make_trigger())
+    scheduler_service.add(agent=AgentType.ANTIGRAVITY, trigger=make_trigger())
 
     scheduler_service.clear()
 
@@ -220,7 +236,7 @@ def test_clear_keeps_records_when_jobs_cannot_be_cleared(
     fake_scheduler: FakeOSJobScheduler,
     schedule_store: WarmupScheduleStore,
 ) -> None:
-    schedule = scheduler_service.add(AgentType.CODEX, make_trigger())
+    schedule = scheduler_service.add(agent=AgentType.CODEX, trigger=make_trigger())
     fake_scheduler.failures["clear_jobs"] = SchedulerError("launchctl failed")
 
     with pytest.raises(SchedulerError, match="launchctl failed"):
@@ -238,10 +254,14 @@ def test_get_returns_none_when_neither_record_nor_job_exists(
     assert scheduler_service.get(UUID(int=1)) is None
 
 
+@pytest.mark.parametrize("model", [None, "custom-model"])
 def test_get_returns_the_schedule_when_record_and_job_match(
     scheduler_service: SchedulerService,
+    model: str | None,
 ) -> None:
-    schedule = scheduler_service.add(AgentType.CODEX, make_trigger())
+    schedule = scheduler_service.add(
+        agent=AgentType.CODEX, trigger=make_trigger(), model=model
+    )
 
     assert scheduler_service.get(schedule.id) == schedule
 
@@ -249,7 +269,7 @@ def test_get_returns_the_schedule_when_record_and_job_match(
 def test_get_reports_a_record_whose_job_is_missing(
     scheduler_service: SchedulerService, fake_scheduler: FakeOSJobScheduler
 ) -> None:
-    schedule = scheduler_service.add(AgentType.CODEX, make_trigger())
+    schedule = scheduler_service.add(agent=AgentType.CODEX, trigger=make_trigger())
     del fake_scheduler.jobs[schedule.id]
 
     with pytest.raises(SchedulerError, match="OS job is missing"):
@@ -259,7 +279,7 @@ def test_get_reports_a_record_whose_job_is_missing(
 def test_get_reports_a_job_without_a_record(
     scheduler_service: SchedulerService, schedule_store: WarmupScheduleStore
 ) -> None:
-    schedule = scheduler_service.add(AgentType.CODEX, make_trigger())
+    schedule = scheduler_service.add(agent=AgentType.CODEX, trigger=make_trigger())
     schedule_store.remove(schedule.id)
 
     with pytest.raises(SchedulerError, match="no saved schedule record"):
@@ -269,7 +289,7 @@ def test_get_reports_a_job_without_a_record(
 def test_get_reports_a_job_whose_triggers_differ_from_the_record(
     scheduler_service: SchedulerService, fake_scheduler: FakeOSJobScheduler
 ) -> None:
-    schedule = scheduler_service.add(AgentType.CODEX, make_trigger())
+    schedule = scheduler_service.add(agent=AgentType.CODEX, trigger=make_trigger())
     job = fake_scheduler.jobs[schedule.id]
     fake_scheduler.jobs[schedule.id] = job.model_copy(
         update={"triggers": job.triggers[:1]}
@@ -282,7 +302,7 @@ def test_get_reports_a_job_whose_triggers_differ_from_the_record(
 def test_get_reports_a_job_whose_command_differs_from_the_record(
     scheduler_service: SchedulerService, fake_scheduler: FakeOSJobScheduler
 ) -> None:
-    schedule = scheduler_service.add(AgentType.CODEX, make_trigger())
+    schedule = scheduler_service.add(agent=AgentType.CODEX, trigger=make_trigger())
     job = fake_scheduler.jobs[schedule.id]
     fake_scheduler.jobs[schedule.id] = job.model_copy(
         update={"command": [job.command[0], "warmup", "--agent", "antigravity"]}
@@ -292,11 +312,37 @@ def test_get_reports_a_job_whose_command_differs_from_the_record(
         scheduler_service.get(schedule.id)
 
 
+@pytest.mark.parametrize(
+    "model_arguments",
+    [
+        pytest.param([], id="model-removed"),
+        pytest.param(["--model", "other-model"], id="model-changed"),
+    ],
+)
+def test_get_reports_a_job_whose_model_differs_from_the_record(
+    scheduler_service: SchedulerService,
+    fake_scheduler: FakeOSJobScheduler,
+    model_arguments: list[str],
+) -> None:
+    schedule = scheduler_service.add(
+        agent=AgentType.CODEX, trigger=make_trigger(), model="custom-model"
+    )
+    job = fake_scheduler.jobs[schedule.id]
+    fake_scheduler.jobs[schedule.id] = job.model_copy(
+        update={
+            "command": [job.command[0], "warmup", "--agent", "codex", *model_arguments]
+        }
+    )
+
+    with pytest.raises(SchedulerError, match="different command arguments"):
+        scheduler_service.get(schedule.id)
+
+
 def test_get_list_returns_consistent_schedules_sorted_by_id(
     scheduler_service: SchedulerService,
 ) -> None:
-    first = scheduler_service.add(AgentType.CODEX, make_trigger())
-    second = scheduler_service.add(AgentType.ANTIGRAVITY, make_trigger())
+    first = scheduler_service.add(agent=AgentType.CODEX, trigger=make_trigger())
+    second = scheduler_service.add(agent=AgentType.ANTIGRAVITY, trigger=make_trigger())
 
     schedules = scheduler_service.get_list()
 
@@ -316,8 +362,8 @@ def test_get_list_is_empty_without_records_or_jobs(
 def test_get_list_fails_when_any_schedule_is_inconsistent(
     scheduler_service: SchedulerService, fake_scheduler: FakeOSJobScheduler
 ) -> None:
-    scheduler_service.add(AgentType.CODEX, make_trigger())
-    broken = scheduler_service.add(AgentType.CODEX, make_trigger())
+    scheduler_service.add(agent=AgentType.CODEX, trigger=make_trigger())
+    broken = scheduler_service.add(agent=AgentType.CODEX, trigger=make_trigger())
     del fake_scheduler.jobs[broken.id]
 
     with pytest.raises(SchedulerError, match=str(broken.id)):

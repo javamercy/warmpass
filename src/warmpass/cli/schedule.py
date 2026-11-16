@@ -101,6 +101,10 @@ def add(
             case_sensitive=False,
         ),
     ] = None,
+    model: Annotated[
+        str | None,
+        typer.Option(help="The model to use for warmup."),
+    ] = None,
 ) -> None:
     if trigger == TriggerKind.DAILY and day:
         raise typer.BadParameter(
@@ -134,7 +138,7 @@ def add(
 
     try:
         service = create_scheduler_service()
-        schedule = service.add(agent, schedule_trigger)
+        schedule = service.add(agent=agent, trigger=schedule_trigger, model=model)
     except SchedulerError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc

@@ -24,15 +24,22 @@ class SchedulerService:
         self._store = store
         self._scheduler = scheduler
 
-    def add(self, agent: AgentType, trigger: ScheduleTrigger) -> WarmupSchedule:
+    def add(
+        self,
+        *,
+        agent: AgentType,
+        trigger: ScheduleTrigger,
+        model: str | None = None,
+    ) -> WarmupSchedule:
         schedule = WarmupSchedule(
             id=uuid4(),
             agent=agent,
+            model=model,
             trigger=trigger,
         )
 
         triggers = expand_triggers(schedule.trigger)
-        arguments = build_warmup_arguments(schedule.agent)
+        arguments = build_warmup_arguments(agent=schedule.agent, model=schedule.model)
 
         self._store.write(schedule, overwrite=False)
         self._scheduler.register_job(
@@ -74,7 +81,9 @@ class SchedulerService:
                 "Remove and re-add the schedule."
             )
 
-        expected_arguments = build_warmup_arguments(schedule.agent)
+        expected_arguments = build_warmup_arguments(
+            agent=schedule.agent, model=schedule.model
+        )
         if job.command[1:] != expected_arguments:
             raise SchedulerError(
                 f"Schedule {schedule_id} in the OS has different command arguments than its saved record. "
@@ -95,8 +104,13 @@ class SchedulerService:
         return schedules
 
 
-def build_warmup_arguments(agent: AgentType) -> list[str]:
-    return ["warmup", "--agent", agent.value]
+def build_warmup_arguments(*, agent: AgentType, model: str | None = None) -> list[str]:
+    arguments = ["warmup", "--agent", agent.value]
+    if model is not None:
+        arguments.append("--model")
+        arguments.append(model)
+
+    return arguments
 
 
 def expand_triggers(trigger: ScheduleTrigger) -> list[ScheduledTrigger]:

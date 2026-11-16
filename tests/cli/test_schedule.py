@@ -35,9 +35,13 @@ def add_args(trigger: str, *extra: str, every: str = "2h") -> list[str]:
     ]
 
 
-def add_existing_schedule(service: SchedulerService) -> WarmupSchedule:
+def add_existing_schedule(
+    service: SchedulerService, *, model: str | None = None
+) -> WarmupSchedule:
     window = HourlyWindow(from_=time(9), until=time(17), every=2)
-    return service.add(AgentType.CODEX, DailyTrigger(window=window))
+    return service.add(
+        agent=AgentType.CODEX, trigger=DailyTrigger(window=window), model=model
+    )
 
 
 def hour_minute_weekday(
@@ -61,6 +65,7 @@ class TestAdd:
         assert schedule_store.list_ids() == {schedule_id}
         assert "Schedule added:" in result.stdout
         assert str(schedule_id) in result.stdout
+        assert "Default" in result.stdout
         (job,) = fake_scheduler.jobs.values()
         assert job.command[1:] == ["warmup", "--agent", "codex"]
         assert hour_minute_weekday(fake_scheduler) == [
@@ -69,6 +74,26 @@ class TestAdd:
             (13, 0, None),
             (15, 0, None),
         ]
+
+    def test_selected_model_is_saved_forwarded_and_displayed(
+        self, fake_scheduler: FakeOSJobScheduler, schedule_store: WarmupScheduleStore
+    ) -> None:
+        result = runner.invoke(app, add_args("daily", "--model", "custom-model"))
+
+        assert result.exit_code == 0, result.output
+        assert result.stderr == ""
+        ((schedule_id, job),) = fake_scheduler.jobs.items()
+        schedule = schedule_store.read(schedule_id)
+        assert schedule is not None
+        assert schedule.model == "custom-model"
+        assert job.command[1:] == [
+            "warmup",
+            "--agent",
+            "codex",
+            "--model",
+            "custom-model",
+        ]
+        assert "custom-model" in result.stdout
 
     def test_weekly_schedule_accepts_repeated_days_in_any_case(
         self, fake_scheduler: FakeOSJobScheduler
@@ -242,14 +267,24 @@ class TestClear:
 
 @pytest.mark.usefixtures("cli_service")
 class TestGet:
-    def test_prints_the_schedule(self, cli_service: SchedulerService) -> None:
-        schedule = add_existing_schedule(cli_service)
+    @pytest.mark.parametrize(
+        ("model", "displayed_model"),
+        [
+            pytest.param(None, "Default", id="agent-default"),
+            pytest.param("custom-model", "custom-model", id="selected-model"),
+        ],
+    )
+    def test_prints_the_schedule(
+        self, cli_service: SchedulerService, model: str | None, displayed_model: str
+    ) -> None:
+        schedule = add_existing_schedule(cli_service, model=model)
 
         result = runner.invoke(app, ["schedule", "get", str(schedule.id)])
 
         assert result.exit_code == 0, result.output
         assert str(schedule.id) in result.stdout
         assert "codex" in result.stdout
+        assert displayed_model in result.stdout
         assert "Daily, every 2 hours, [09:00–17:00)" in result.stdout
 
     def test_unknown_schedule_exits_one(self) -> None:
@@ -283,13 +318,15 @@ class TestList:
     def test_prints_every_schedule(self, cli_service: SchedulerService) -> None:
         ids: list[UUID] = [
             add_existing_schedule(cli_service).id,
-            add_existing_schedule(cli_service).id,
+            add_existing_schedule(cli_service, model="custom-model").id,
         ]
 
         result = runner.invoke(app, ["schedule", "list"])
 
         assert result.exit_code == 0, result.output
         assert all(str(schedule_id) in result.stdout for schedule_id in ids)
+        assert "Default" in result.stdout
+        assert "custom-model" in result.stdout
 
     def test_os_job_without_record_exits_one(
         self, cli_service: SchedulerService, schedule_store: WarmupScheduleStore

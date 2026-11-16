@@ -19,6 +19,9 @@ def _timestamp() -> str:
 @app.command("warmup", help="Warm up a specific agent immediately.")
 def warmup(
     agent: Annotated[AgentType, typer.Option(help="The name of the agent to warm up.")],
+    model: Annotated[
+        str | None, typer.Option(help="The name of the model to use for warmup.")
+    ] = None,
 ) -> None:
     console = Console(stderr=True)
 
@@ -31,9 +34,9 @@ def warmup(
             with console.status(
                 f"[bold green]Warming up {agent.value}...", spinner="dots"
             ):
-                service.warmup()
+                service.warmup(model)
         else:
-            service.warmup()
+            service.warmup(model)
     except WarmupError as exc:
         duration = perf_counter() - started_at
         typer.echo(

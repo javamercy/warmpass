@@ -90,6 +90,7 @@ type ScheduleTrigger = Annotated[
 class WarmupSchedule(BaseModel):
     id: UUID
     agent: AgentType
+    model: str | None = None
     trigger: ScheduleTrigger
 
 

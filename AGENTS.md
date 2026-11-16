@@ -7,6 +7,7 @@ Warmpass is a Python 3.14+ CLI for running and scheduling agent warmups. Source 
 - `warmup` sends a minimal prompt to a coding agent (Claude Code, Codex, Antigravity) to start its 5-hour usage window.
 - `schedule` stores a schedule record and registers one OS job per schedule. The job's triggers are computed from the record, and the job runs `warmpass warmup`.
 - `handoff` has the target agent summarize the source agent's session, then creates a new target-agent session that starts with the summary.
+- `warmup` and `schedule add` accept optional `--model`. Model IDs are opaque strings validated by the agent; omission uses the agent's configured default. Schedules store and forward explicit model selections.
 
 ## Development
 
@@ -17,6 +18,7 @@ Warmpass is a Python 3.14+ CLI for running and scheduling agent warmups. Source 
 
 ## Rules for every task
 
+- The project is unreleased. Explicitly requested breaking changes do not require migrations or compatibility machinery.
 - Preserve documented command syntax, exit codes, and existing schedule records unless the task changes them. When a task changes them, update the docs and state what happens to existing records and installed jobs. Do not add compatibility shims.
 - Do not run a real agent or register or remove a real OS job without asking. `warmup` and `handoff` spend agent quota, and `schedule` changes the user's OS.
 - Tests never touch real agents, real OS jobs, the real home directory, or real Warmpass state and log locations.
