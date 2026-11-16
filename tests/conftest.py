@@ -24,6 +24,7 @@ def isolated_user_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.setattr("typer.rich_utils.FORCE_TERMINAL", False)
 
     def data_directory(appname: str, appauthor: bool) -> Path:
         return tmp_path / "warmpass-data"
