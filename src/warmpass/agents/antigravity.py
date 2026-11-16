@@ -23,8 +23,7 @@ class AntigravityWarmupAgent(WarmupAgent):
             "--disable-slash-commands",
         ]
         if model is not None:
-            command.append("--model")
-            command.append(model)
+            command.extend(("--model", model))
 
         run_agent_warmup_process(
             command,

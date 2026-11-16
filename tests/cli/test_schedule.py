@@ -21,12 +21,17 @@ from warmpass.scheduling.store import WarmupScheduleStore
 runner = CliRunner()
 
 
-def add_args(trigger: str, *extra: str, every: str = "2h") -> list[str]:
+def add_args(
+    trigger: str,
+    *extra: str,
+    every: str = "2h",
+    agent: AgentType = AgentType.CODEX,
+) -> list[str]:
     return [
         "schedule",
         "add",
         "--agent",
-        "codex",
+        agent.value,
         "--trigger",
         trigger,
         "--every",
@@ -53,21 +58,30 @@ def hour_minute_weekday(
 
 @pytest.mark.usefixtures("cli_service")
 class TestAdd:
+    @pytest.mark.parametrize("agent", list(AgentType))
     def test_daily_schedule_registers_one_job_and_saves_the_record(
-        self, fake_scheduler: FakeOSJobScheduler, schedule_store: WarmupScheduleStore
+        self,
+        fake_scheduler: FakeOSJobScheduler,
+        schedule_store: WarmupScheduleStore,
+        agent: AgentType,
     ) -> None:
         result = runner.invoke(
-            app, add_args("daily", "--from", "09:00", "--until", "17:00")
+            app, add_args("daily", "--from", "09:00", "--until", "17:00", agent=agent)
         )
 
         assert result.exit_code == 0, result.output
+        assert result.stderr == ""
         (schedule_id,) = fake_scheduler.jobs
         assert schedule_store.list_ids() == {schedule_id}
+        schedule = schedule_store.read(schedule_id)
+        assert schedule is not None
+        assert schedule.agent == agent
+        assert schedule.model is None
         assert "Schedule added:" in result.stdout
         assert str(schedule_id) in result.stdout
         assert "Default" in result.stdout
         (job,) = fake_scheduler.jobs.values()
-        assert job.command[1:] == ["warmup", "--agent", "codex"]
+        assert job.command[1:] == ["warmup", "--agent", agent.value]
         assert hour_minute_weekday(fake_scheduler) == [
             (9, 0, None),
             (11, 0, None),
@@ -75,21 +89,28 @@ class TestAdd:
             (15, 0, None),
         ]
 
+    @pytest.mark.parametrize("agent", list(AgentType))
     def test_selected_model_is_saved_forwarded_and_displayed(
-        self, fake_scheduler: FakeOSJobScheduler, schedule_store: WarmupScheduleStore
+        self,
+        fake_scheduler: FakeOSJobScheduler,
+        schedule_store: WarmupScheduleStore,
+        agent: AgentType,
     ) -> None:
-        result = runner.invoke(app, add_args("daily", "--model", "custom-model"))
+        result = runner.invoke(
+            app, add_args("daily", "--model", "custom-model", agent=agent)
+        )
 
         assert result.exit_code == 0, result.output
         assert result.stderr == ""
         ((schedule_id, job),) = fake_scheduler.jobs.items()
         schedule = schedule_store.read(schedule_id)
         assert schedule is not None
+        assert schedule.agent == agent
         assert schedule.model == "custom-model"
         assert job.command[1:] == [
             "warmup",
             "--agent",
-            "codex",
+            agent.value,
             "--model",
             "custom-model",
         ]

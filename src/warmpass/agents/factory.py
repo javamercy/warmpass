@@ -16,5 +16,10 @@ def create_warmup_agent(agent_type: AgentType) -> WarmupAgent:
 
             return AntigravityWarmupAgent()
 
+        case AgentType.CLAUDE:
+            from warmpass.agents.claude import ClaudeWarmupAgent
+
+            return ClaudeWarmupAgent()
+
         case _:
             assert_never(agent_type)

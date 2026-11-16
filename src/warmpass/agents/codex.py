@@ -22,8 +22,7 @@ class CodexWarmupAgent(WarmupAgent):
             prompt,
         ]
         if model is not None:
-            command.append("--model")
-            command.append(model)
+            command.extend(("--model", model))
 
         run_agent_warmup_process(
             command,

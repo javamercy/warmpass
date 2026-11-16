@@ -17,6 +17,7 @@ runner = CliRunner()
     [
         pytest.param("codex", "codex", id="codex"),
         pytest.param("antigravity", "agy", id="antigravity"),
+        pytest.param("claude", "claude", id="claude"),
     ],
 )
 def test_successful_warmup_exits_zero_and_logs_to_stdout(
@@ -34,7 +35,7 @@ def test_successful_warmup_exits_zero_and_logs_to_stdout(
     assert "--model" not in call.command
 
 
-@pytest.mark.parametrize("agent", ["codex", "antigravity"])
+@pytest.mark.parametrize("agent", ["codex", "antigravity", "claude"])
 def test_selected_model_is_passed_to_the_agent(
     agent_process: FakeAgentProcess, agent: str
 ) -> None:
