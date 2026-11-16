@@ -18,9 +18,8 @@ def get_warmpass_executable_search_path(additional_paths: tuple[str, ...] = ()) 
     return os.pathsep.join(paths.keys())
 
 
-def find_warmpass_executable(search_path: str, *, platform: str | None = None) -> Path:
-    target_platform = sys.platform if platform is None else platform
-    executable_name = "warmpass.exe" if target_platform == "win32" else "warmpass"
+def find_warmpass_executable(search_path: str) -> Path:
+    executable_name = "warmpass.exe" if sys.platform == "win32" else "warmpass"
 
     for directory in search_path.split(os.pathsep):
         if not directory or not Path(directory).is_absolute():
@@ -28,7 +27,7 @@ def find_warmpass_executable(search_path: str, *, platform: str | None = None) -
 
         candidate = Path(directory) / executable_name
 
-        if target_platform == "win32":
+        if sys.platform == "win32":
             if candidate.is_file():
                 return candidate
         else:

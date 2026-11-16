@@ -10,10 +10,12 @@ from warmpass.scheduling.executable import (
     get_warmpass_executable_search_path,
 )
 
+EXECUTABLE_NAME = "warmpass.exe" if sys.platform == "win32" else "warmpass"
 
-def make_executable(directory: Path, name: str = "warmpass") -> Path:
+
+def make_executable(directory: Path) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
-    path = directory / name
+    path = directory / EXECUTABLE_NAME
     path.write_text("#!/bin/sh\n", encoding="utf-8")
     path.chmod(0o755)
     return path
@@ -45,24 +47,16 @@ def test_search_path_appends_additional_entries_after_inherited_ones(
     assert result == search_path(inherited, extra)
 
 
-@pytest.mark.parametrize(
-    ("platform", "name"),
-    [
-        pytest.param("darwin", "warmpass", id="posix"),
-        pytest.param("win32", "warmpass.exe", id="windows"),
-    ],
-)
 def test_find_returns_the_executable_from_the_first_directory_that_has_one(
-    tmp_path: Path, platform: str, name: str
+    tmp_path: Path,
 ) -> None:
     empty = tmp_path / "empty"
     empty.mkdir()
-    expected = make_executable(tmp_path / "bin", name)
-    make_executable(tmp_path / "later", name)
+    expected = make_executable(tmp_path / "bin")
+    make_executable(tmp_path / "later")
 
     found = find_warmpass_executable(
-        search_path(empty, tmp_path / "bin", tmp_path / "later"),
-        platform=platform,
+        search_path(empty, tmp_path / "bin", tmp_path / "later")
     )
 
     assert found == expected
@@ -71,41 +65,25 @@ def test_find_returns_the_executable_from_the_first_directory_that_has_one(
 def test_find_ignores_relative_entries(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    make_executable(tmp_path / "bin", "warmpass")
+    make_executable(tmp_path / "bin")
     monkeypatch.chdir(tmp_path)
 
     with pytest.raises(SchedulerError, match="Could not find"):
-        find_warmpass_executable("bin", platform="darwin")
+        find_warmpass_executable("bin")
 
 
-@pytest.mark.parametrize(
-    ("platform", "name"),
-    [
-        pytest.param("darwin", "warmpass", id="posix"),
-        pytest.param("win32", "warmpass.exe", id="windows"),
-    ],
-)
 def test_find_reports_the_executable_name_when_it_is_missing(
-    tmp_path: Path, platform: str, name: str
+    tmp_path: Path,
 ) -> None:
-    with pytest.raises(SchedulerError, match=f"'{name}' in PATH"):
-        find_warmpass_executable(search_path(tmp_path), platform=platform)
+    with pytest.raises(SchedulerError, match=f"'{EXECUTABLE_NAME}' in PATH"):
+        find_warmpass_executable(search_path(tmp_path))
 
 
 @pytest.mark.skipif(
     sys.platform == "win32", reason="Windows has no executable permission bit"
 )
 def test_find_skips_a_file_that_is_not_executable(tmp_path: Path) -> None:
-    make_executable(tmp_path, "warmpass").chmod(0o644)
+    make_executable(tmp_path).chmod(0o644)
 
     with pytest.raises(SchedulerError, match="Could not find"):
-        find_warmpass_executable(search_path(tmp_path), platform="darwin")
-
-
-def test_find_on_windows_accepts_a_file_without_posix_execute_permission(
-    tmp_path: Path,
-) -> None:
-    expected = make_executable(tmp_path, "warmpass.exe")
-    expected.chmod(0o644)
-
-    assert find_warmpass_executable(search_path(tmp_path), platform="win32") == expected
+        find_warmpass_executable(search_path(tmp_path))
