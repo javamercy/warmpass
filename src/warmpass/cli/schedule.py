@@ -8,10 +8,9 @@ import typer
 from pydantic import ValidationError
 from rich.console import Console
 
-from warmpass.agents.models import AgentType
 from warmpass.cli.schedule_output import print_schedule, print_schedules
-from warmpass.scheduling.base import SchedulerError
-from warmpass.scheduling.factory import create_scheduler_service
+from warmpass.models import AgentType
+from warmpass.scheduling.base import SchedulingError
 from warmpass.scheduling.models import (
     DailyTrigger,
     HourlyWindow,
@@ -20,6 +19,7 @@ from warmpass.scheduling.models import (
     WeekDay,
     WeeklyTrigger,
 )
+from warmpass.wiring import create_scheduler_service
 
 app = typer.Typer(help="Manage warmup schedules.")
 
@@ -139,7 +139,7 @@ def add(
     try:
         service = create_scheduler_service()
         schedule = service.add(agent=agent, trigger=schedule_trigger, model=model)
-    except SchedulerError as exc:
+    except SchedulingError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
@@ -156,7 +156,7 @@ def remove(
     try:
         service = create_scheduler_service()
         service.remove(schedule_id)
-    except SchedulerError as exc:
+    except SchedulingError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
@@ -177,7 +177,7 @@ def clear(
     try:
         service = create_scheduler_service()
         service.clear()
-    except SchedulerError as exc:
+    except SchedulingError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
@@ -193,7 +193,7 @@ def get(
     try:
         service = create_scheduler_service()
         schedule = service.get(schedule_id)
-    except SchedulerError as exc:
+    except SchedulingError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 
@@ -209,7 +209,7 @@ def get_list() -> None:
     try:
         service = create_scheduler_service()
         schedules = service.get_list()
-    except SchedulerError as exc:
+    except SchedulingError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc
 

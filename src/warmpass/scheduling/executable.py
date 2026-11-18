@@ -3,7 +3,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from warmpass.scheduling.base import SchedulerError
+from warmpass.scheduling.base import SchedulingError
 
 
 def get_warmpass_executable_search_path(additional_paths: tuple[str, ...] = ()) -> str:
@@ -35,7 +35,7 @@ def find_warmpass_executable(search_path: str) -> Path:
             if executable is not None:
                 return Path(executable)
 
-    raise SchedulerError(
+    raise SchedulingError(
         f"Could not find '{executable_name}' in PATH. "
         "Install Warmpass or add its executable directory to PATH."
     )

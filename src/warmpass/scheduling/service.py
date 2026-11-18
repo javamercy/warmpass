@@ -1,8 +1,8 @@
 from typing import assert_never
 from uuid import UUID, uuid4
 
-from warmpass.agents.models import AgentType
-from warmpass.scheduling.base import OSJobScheduler, SchedulerError
+from warmpass.models import AgentType
+from warmpass.scheduling.base import OSJobScheduler, SchedulingError
 from warmpass.scheduling.models import (
     DailyTrigger,
     ScheduledTrigger,
@@ -48,9 +48,6 @@ class SchedulerService:
         return schedule
 
     def remove(self, schedule_id: UUID) -> None:
-        if self.get(schedule_id) is None:
-            raise SchedulerError(f"Schedule {schedule_id} does not exist.")
-
         self._scheduler.unregister_job(schedule_id)
         self._store.remove(schedule_id)
 
@@ -65,18 +62,18 @@ class SchedulerService:
         if schedule is None and job is None:
             return None
         elif schedule is None:
-            raise SchedulerError(
+            raise SchedulingError(
                 f"Schedule {schedule_id} has an OS job but no saved schedule record."
             )
         elif job is None:
-            raise SchedulerError(
+            raise SchedulingError(
                 f"Schedule {schedule_id} has a saved record, "
                 "but its OS job is missing or not loaded."
             )
 
         expected_triggers = expand_triggers(schedule.trigger)
         if job.triggers != expected_triggers:
-            raise SchedulerError(
+            raise SchedulingError(
                 f"Schedule {schedule_id} in the OS has different triggers than its saved record. "
                 "Remove and re-add the schedule."
             )
@@ -85,7 +82,7 @@ class SchedulerService:
             agent=schedule.agent, model=schedule.model
         )
         if job.command[1:] != expected_arguments:
-            raise SchedulerError(
+            raise SchedulingError(
                 f"Schedule {schedule_id} in the OS has different command arguments than its saved record. "
                 "Remove and re-add the schedule."
             )

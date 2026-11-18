@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Final
 
 from warmpass.paths import get_log_directory
-from warmpass.scheduling.base import OSJobScheduler, SchedulerError
+from warmpass.scheduling.base import OSJobScheduler, SchedulingError
 from warmpass.scheduling.executable import (
     find_warmpass_executable,
     get_warmpass_executable_search_path,
@@ -21,7 +21,7 @@ _MACOS_SYSTEM_PATHS: Final[tuple[str, ...]] = (
 def _find_launchctl_executable(search_path: str) -> Path:
     launchctl_executable = shutil.which("launchctl", path=search_path)
     if launchctl_executable is None:
-        raise SchedulerError(
+        raise SchedulingError(
             "Could not find 'launchctl' in PATH. "
             "Ensure that you are running on macOS and that 'launchctl' is available."
         )

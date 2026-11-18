@@ -12,8 +12,8 @@ import pytest
 from typer.testing import CliRunner
 
 from tests.support.fakes import FakeAgentProcess, FakeOSJobScheduler
-from warmpass.agents.models import AgentType
 from warmpass.cli.main import app
+from warmpass.models import AgentType
 from warmpass.scheduling.models import DailyTrigger, HourlyWindow
 from warmpass.scheduling.service import SchedulerService
 

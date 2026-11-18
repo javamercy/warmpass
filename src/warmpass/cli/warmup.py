@@ -5,9 +5,9 @@ from typing import Annotated
 import typer
 from rich.console import Console
 
-from warmpass.agents.base import WarmupError
-from warmpass.agents.models import AgentType
-from warmpass.warmup.factory import create_warmup_service
+from warmpass.agents.warmup_process import WarmupError
+from warmpass.models import AgentType
+from warmpass.wiring import create_warmup_service
 
 app = typer.Typer(help="Warm up a specific agent immediately.")
 

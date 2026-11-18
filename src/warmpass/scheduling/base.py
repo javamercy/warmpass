@@ -5,8 +5,8 @@ from warmpass.errors import WarmpassError
 from warmpass.scheduling.models import OSJob, ScheduledTrigger
 
 
-class SchedulerError(WarmpassError):
-    """Base class for all scheduler errors."""
+class SchedulingError(WarmpassError):
+    """Base class for all scheduling errors."""
 
 
 class OSJobScheduler(Protocol):

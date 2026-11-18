@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import ValidationError
 
-from warmpass.scheduling.base import SchedulerError
+from warmpass.scheduling.base import SchedulingError
 from warmpass.scheduling.models import WarmupSchedule
 
 
@@ -21,19 +21,19 @@ class WarmupScheduleStore:
         except FileNotFoundError:
             return None
         except OSError as exc:
-            raise SchedulerError(
+            raise SchedulingError(
                 f"Cannot read saved schedule {schedule_id}: {exc}"
             ) from exc
 
         try:
             schedule = WarmupSchedule.model_validate_json(data)
         except ValidationError as exc:
-            raise SchedulerError(
+            raise SchedulingError(
                 f"Cannot read saved schedule {schedule_id}: invalid JSON record at {schedule_path}."
             ) from exc
 
         if schedule.id != schedule_id:
-            raise SchedulerError(
+            raise SchedulingError(
                 f"Cannot read saved schedule {schedule_id}: "
                 f"record ID mismatch (expected {schedule_id}, got {schedule.id})."
             )
@@ -46,7 +46,7 @@ class WarmupScheduleStore:
         except FileNotFoundError:
             return set()
         except OSError as exc:
-            raise SchedulerError(
+            raise SchedulingError(
                 f"Cannot list schedule files in {self._directory}: {exc}"
             ) from exc
 
@@ -58,9 +58,9 @@ class WarmupScheduleStore:
             try:
                 schedule_id = UUID(entry.stem)
             except ValueError as exc:
-                raise SchedulerError(f"Invalid schedule filename: {entry}") from exc
+                raise SchedulingError(f"Invalid schedule filename: {entry}") from exc
             if entry.name != f"{schedule_id}.json":
-                raise SchedulerError(f"Invalid schedule filename: {entry}")
+                raise SchedulingError(f"Invalid schedule filename: {entry}")
 
             ids.add(schedule_id)
 
@@ -74,14 +74,16 @@ class WarmupScheduleStore:
     ) -> None:
         schedule_path = self._schedule_file_path(schedule.id)
         if not overwrite and schedule_path.exists():
-            raise SchedulerError(f"Schedule {schedule.id} already exists in the store.")
+            raise SchedulingError(
+                f"Schedule {schedule.id} already exists in the store."
+            )
 
         data = schedule.model_dump_json(indent=4)
 
         try:
             self._directory.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
-            raise SchedulerError(
+            raise SchedulingError(
                 f"Could not create schedule store directory {self._directory}: {exc}"
             ) from exc
 
@@ -100,7 +102,7 @@ class WarmupScheduleStore:
 
             os.replace(temp_path, schedule_path)
         except OSError as exc:
-            raise SchedulerError(
+            raise SchedulingError(
                 f"Could not save schedule {schedule.id}: {exc}"
             ) from exc
 
@@ -113,7 +115,7 @@ class WarmupScheduleStore:
         try:
             schedule_path.unlink(missing_ok=True)
         except OSError as exc:
-            raise SchedulerError(
+            raise SchedulingError(
                 f"Could not remove schedule record {schedule_id}: {exc}"
             ) from exc
 
@@ -123,7 +125,7 @@ class WarmupScheduleStore:
         except FileNotFoundError:
             return
         except OSError as exc:
-            raise SchedulerError(
+            raise SchedulingError(
                 f"Cannot list schedule files in {self._directory}: {exc}"
             ) from exc
 
@@ -138,7 +140,7 @@ class WarmupScheduleStore:
                 failures.append(f"Cannot remove {entry}: {exc}")
 
         if failures:
-            raise SchedulerError(
+            raise SchedulingError(
                 "Some schedule record files could not be removed: "
                 + "; ".join(failures)
             )

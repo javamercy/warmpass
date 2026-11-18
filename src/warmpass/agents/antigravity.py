@@ -1,4 +1,5 @@
-from warmpass.agents.base import WarmupAgent, run_agent_warmup_process
+from warmpass.agents.warmup_process import run_agent_warmup_process
+from warmpass.warmup.base import WarmupAgent
 
 
 class AntigravityWarmupAgent(WarmupAgent):

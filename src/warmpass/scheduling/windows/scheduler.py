@@ -8,7 +8,7 @@ from xml.etree import ElementTree as ET
 
 from pydantic import ValidationError
 
-from warmpass.scheduling.base import OSJobScheduler, SchedulerError
+from warmpass.scheduling.base import OSJobScheduler, SchedulingError
 from warmpass.scheduling.models import OSJob, ScheduledTrigger
 from warmpass.scheduling.windows.task_xml import (
     TASK_NAME_PREFIX,
@@ -64,7 +64,7 @@ class WindowsTaskScheduler(OSJobScheduler):
                     xml_path = Path(temp_file.name)
                     temp_file.write(xml_data)
             except OSError as exc:
-                raise SchedulerError(
+                raise SchedulingError(
                     f"Could not create task XML for schedule {schedule_id}: {exc}. "
                     "The schedule record was retained; no task registration was attempted."
                 ) from exc
@@ -78,20 +78,20 @@ class WindowsTaskScheduler(OSJobScheduler):
                     str(xml_path),
                 )
             except subprocess.TimeoutExpired as exc:
-                raise SchedulerError(
+                raise SchedulingError(
                     f"Registration of schedule {schedule_id} timed out. "
                     f"Task {configuration.name!r} may have been registered. "
                     "The schedule record was retained; inspect the task before retrying."
                 ) from exc
             except subprocess.CalledProcessError as exc:
                 details = (exc.stderr or exc.stdout or "").strip()
-                raise SchedulerError(
+                raise SchedulingError(
                     f"Could not register schedule {schedule_id} as task "
                     f"{configuration.name!r}: {details or exc}. "
                     "The schedule record was retained; inspect the task before retrying."
                 ) from exc
             except OSError as exc:
-                raise SchedulerError(
+                raise SchedulingError(
                     f"Could not run schtasks for schedule {schedule_id}: {exc}. "
                     "The schedule record was retained."
                 ) from exc
@@ -105,18 +105,18 @@ class WindowsTaskScheduler(OSJobScheduler):
         try:
             self._run_schtasks("/delete", "/tn", task_name, "/f")
         except subprocess.TimeoutExpired as exc:
-            raise SchedulerError(
+            raise SchedulingError(
                 f"Removing Windows task {task_name!r} timed out; "
                 "its status is unknown. The schedule record was retained."
             ) from exc
         except subprocess.CalledProcessError as exc:
             details = (exc.stderr or exc.stdout or "").strip()
-            raise SchedulerError(
+            raise SchedulingError(
                 f"Could not delete Windows task {task_name!r}: {details or exc}. "
                 "The schedule record was retained."
             ) from exc
         except OSError as exc:
-            raise SchedulerError(
+            raise SchedulingError(
                 f"Could not run schtasks to remove schedule {schedule_id}: {exc}. "
                 "The schedule record was retained."
             ) from exc
@@ -127,7 +127,7 @@ class WindowsTaskScheduler(OSJobScheduler):
         try:
             xml_output = self._run_schtasks("/query", "/tn", task_name, "/xml")
         except subprocess.TimeoutExpired as exc:
-            raise SchedulerError(
+            raise SchedulingError(
                 f"Checking Windows task {task_name!r} timed out; its status is unknown."
             ) from exc
         except subprocess.CalledProcessError as exc:
@@ -135,18 +135,18 @@ class WindowsTaskScheduler(OSJobScheduler):
                 return None
 
             details = (exc.stderr or exc.stdout or "").strip()
-            raise SchedulerError(
+            raise SchedulingError(
                 f"Cannot verify Windows task {task_name!r}: {details or exc}."
             ) from exc
         except OSError as exc:
-            raise SchedulerError(
+            raise SchedulingError(
                 f"Could not run schtasks to check schedule {schedule_id}: {exc}"
             ) from exc
 
         try:
             return parse_task_xml(schedule_id, xml_output)
         except (ET.ParseError, ValidationError, ValueError) as exc:
-            raise SchedulerError(
+            raise SchedulingError(
                 f"Invalid task XML for schedule {schedule_id}: {exc}"
             ) from exc
 
@@ -154,16 +154,16 @@ class WindowsTaskScheduler(OSJobScheduler):
         try:
             output = self._run_schtasks("/query", "/fo", "csv", "/nh")
         except subprocess.TimeoutExpired as exc:
-            raise SchedulerError(
+            raise SchedulingError(
                 "Listing Windows tasks timed out; task status is unknown."
             ) from exc
         except subprocess.CalledProcessError as exc:
             details = (exc.stderr or exc.stdout or "").strip()
-            raise SchedulerError(
+            raise SchedulingError(
                 f"Cannot list Windows tasks: {details or exc}"
             ) from exc
         except OSError as exc:
-            raise SchedulerError(
+            raise SchedulingError(
                 f"Could not run schtasks to list schedules: {exc}"
             ) from exc
 
@@ -180,10 +180,10 @@ class WindowsTaskScheduler(OSJobScheduler):
             try:
                 schedule_id = UUID(name)
             except ValueError as exc:
-                raise SchedulerError(f"Invalid Windows task name: {row[0]!r}") from exc
+                raise SchedulingError(f"Invalid Windows task name: {row[0]!r}") from exc
 
             if name != str(schedule_id):
-                raise SchedulerError(f"Invalid Windows task name: {row[0]!r}")
+                raise SchedulingError(f"Invalid Windows task name: {row[0]!r}")
 
             ids.add(schedule_id)
 
@@ -206,7 +206,7 @@ class WindowsTaskScheduler(OSJobScheduler):
                 )
 
         if failures:
-            raise SchedulerError(
+            raise SchedulingError(
                 "Could not clear all Windows scheduled tasks; no schedule files were removed. "
                 "Some tasks may already have been deleted: " + "; ".join(failures)
             )

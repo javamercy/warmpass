@@ -12,7 +12,8 @@ from subprocess import DEVNULL, TimeoutExpired
 import pytest
 
 from tests.support.fakes import FakeAgentProcess
-from warmpass.agents.base import WarmupError, run_agent_warmup_process
+from warmpass.agents.warmup_process import run_agent_warmup_process
+from warmpass.warmup.base import WarmupError
 
 
 def python_agent(code: str) -> list[str]:
@@ -24,6 +25,9 @@ def run(command: list[str], *, timeout_seconds: int = 30) -> str:
         command, executable="agent", timeout_seconds=timeout_seconds
     )
     return completed.stdout
+
+
+# --- stand-in agent process ----------------------------------------------------
 
 
 def test_reply_is_returned_when_agent_exits_zero() -> None:
@@ -91,6 +95,9 @@ def test_agent_runs_in_a_temporary_directory_that_is_removed_afterwards() -> Non
 
     assert working_directory != Path.cwd()
     assert not working_directory.exists()
+
+
+# --- faked agent process -------------------------------------------------------
 
 
 def test_run_is_unattended_and_bounded(agent_process: FakeAgentProcess) -> None:

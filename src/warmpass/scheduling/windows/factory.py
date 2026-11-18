@@ -3,7 +3,7 @@ import sys
 from ctypes import wintypes
 from pathlib import Path
 
-from warmpass.scheduling.base import OSJobScheduler, SchedulerError
+from warmpass.scheduling.base import OSJobScheduler, SchedulingError
 from warmpass.scheduling.executable import (
     find_warmpass_executable,
     get_warmpass_executable_search_path,
@@ -16,7 +16,7 @@ _ERROR_MORE_DATA = 234
 
 def _get_current_user_id() -> str:
     if sys.platform != "win32":
-        raise SchedulerError("Windows Task Scheduler is only supported on Windows.")
+        raise SchedulingError("Windows Task Scheduler is only supported on Windows.")
 
     secur32 = ctypes.WinDLL("secur32", use_last_error=True)
     get_user_name = secur32.GetUserNameExW
@@ -43,14 +43,14 @@ def _get_current_user_id() -> str:
 
         return str(buffer.value)
     except OSError as exc:
-        raise SchedulerError(
+        raise SchedulingError(
             f"Could not determine current Windows user ID: {exc}"
         ) from exc
 
 
 def _get_system_directory() -> Path:
     if sys.platform != "win32":
-        raise SchedulerError("Windows Task Scheduler is only supported on Windows.")
+        raise SchedulingError("Windows Task Scheduler is only supported on Windows.")
 
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     get_system_directory = kernel32.GetSystemDirectoryW
@@ -62,12 +62,12 @@ def _get_system_directory() -> Path:
 
     if length == 0:
         error = ctypes.WinError(ctypes.get_last_error())
-        raise SchedulerError(
+        raise SchedulingError(
             f"Could not determine Windows system directory: {error}"
         ) from error
 
     if length >= len(buffer):
-        raise SchedulerError("Windows system directory path is too long.")
+        raise SchedulingError("Windows system directory path is too long.")
 
     return Path(buffer.value)
 
@@ -78,7 +78,7 @@ def create_windows_warmup_scheduler() -> OSJobScheduler:
 
     schtasks_executable = _get_system_directory() / "schtasks.exe"
     if not schtasks_executable.is_file():
-        raise SchedulerError(f"Cannot find schtasks.exe: {schtasks_executable}")
+        raise SchedulingError(f"Cannot find schtasks.exe: {schtasks_executable}")
 
     return WindowsTaskScheduler(
         warmpass_executable=warmpass_executable,

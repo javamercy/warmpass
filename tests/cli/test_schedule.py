@@ -11,9 +11,9 @@ import pytest
 from typer.testing import CliRunner
 
 from tests.support.fakes import FakeOSJobScheduler
-from warmpass.agents.models import AgentType
 from warmpass.cli.main import app
-from warmpass.scheduling.base import SchedulerError
+from warmpass.models import AgentType
+from warmpass.scheduling.base import SchedulingError
 from warmpass.scheduling.models import DailyTrigger, HourlyWindow, WarmupSchedule
 from warmpass.scheduling.service import SchedulerService
 from warmpass.scheduling.store import WarmupScheduleStore
@@ -54,6 +54,9 @@ def hour_minute_weekday(
 ) -> list[tuple[int, int, int | None]]:
     (job,) = scheduler.jobs.values()
     return [(t.hour, t.minute, t.weekday) for t in job.triggers]
+
+
+# --- schedule add -------------------------------------------------------------
 
 
 @pytest.mark.usefixtures("cli_service")
@@ -189,13 +192,16 @@ class TestAdd:
     def test_scheduler_failure_exits_one_without_a_success_message(
         self, fake_scheduler: FakeOSJobScheduler
     ) -> None:
-        fake_scheduler.failures["register_job"] = SchedulerError("launchd refused")
+        fake_scheduler.failures["register_job"] = SchedulingError("launchd refused")
 
         result = runner.invoke(app, add_args("daily"))
 
         assert result.exit_code == 1
         assert "Error: launchd refused" in result.stderr
         assert "Schedule added" not in result.stdout
+
+
+# --- schedule remove ----------------------------------------------------------
 
 
 @pytest.mark.usefixtures("cli_service")
@@ -215,19 +221,24 @@ class TestRemove:
         assert fake_scheduler.jobs == {}
         assert schedule_store.list_ids() == set()
 
-    def test_unknown_schedule_exits_one_and_touches_no_job(
+    def test_scheduler_rejection_exits_one_without_a_success_message(
         self, fake_scheduler: FakeOSJobScheduler
     ) -> None:
+        fake_scheduler.failures["unregister_job"] = SchedulingError("OS job not found")
+
         result = runner.invoke(app, ["schedule", "remove", str(uuid4())])
 
         assert result.exit_code == 1
-        assert "does not exist" in result.stderr
-        assert "unregister_job" not in fake_scheduler.calls
+        assert "Error: OS job not found" in result.stderr
+        assert "has been removed" not in result.stdout
 
     def test_malformed_id_exits_two(self) -> None:
         result = runner.invoke(app, ["schedule", "remove", "not-a-uuid"])
 
         assert result.exit_code == 2
+
+
+# --- schedule clear -----------------------------------------------------------
 
 
 @pytest.mark.usefixtures("cli_service")
@@ -277,13 +288,16 @@ class TestClear:
     def test_scheduler_failure_exits_one(
         self, fake_scheduler: FakeOSJobScheduler
     ) -> None:
-        fake_scheduler.failures["clear_jobs"] = SchedulerError("launchctl failed")
+        fake_scheduler.failures["clear_jobs"] = SchedulingError("launchctl failed")
 
         result = runner.invoke(app, ["schedule", "clear", "--yes"])
 
         assert result.exit_code == 1
         assert "Error: launchctl failed" in result.stderr
         assert "cleared" not in result.stdout
+
+
+# --- schedule get -------------------------------------------------------------
 
 
 @pytest.mark.usefixtures("cli_service")
@@ -326,6 +340,9 @@ class TestGet:
 
         assert result.exit_code == 1
         assert "OS job is missing" in result.stderr
+
+
+# --- schedule list ------------------------------------------------------------
 
 
 @pytest.mark.usefixtures("cli_service")

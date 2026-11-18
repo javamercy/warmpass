@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from warmpass.agents.models import AgentType
+from warmpass.models import AgentType
 
 
 class WeekDay(IntEnum):

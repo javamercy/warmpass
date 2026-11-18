@@ -1,6 +1,6 @@
 from typing import Final
 
-from warmpass.agents.base import WarmupAgent
+from warmpass.warmup.base import WarmupAgent
 
 WARMUP_PROMPT: Final[str] = "ONLY reply with OK. Do not use tools or inspect files."
 

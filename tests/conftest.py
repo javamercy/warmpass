@@ -12,6 +12,8 @@ from typing import Any
 import pytest
 
 from tests.support.fakes import FakeAgentProcess, FakeOSJobScheduler
+from warmpass import wiring
+from warmpass.agents import warmup_process
 from warmpass.paths import get_store_directory
 from warmpass.scheduling.service import SchedulerService
 from warmpass.scheduling.store import WarmupScheduleStore
@@ -55,7 +57,7 @@ def forbid_real_agents_and_schedulers(monkeypatch: pytest.MonkeyPatch) -> None:
     def refuse_real_scheduler() -> None:
         raise AssertionError("Test tried to build a real OS job scheduler.")
 
-    monkeypatch.setattr("warmpass.agents.base.run", run_only_python)
+    monkeypatch.setattr(warmup_process, "run", run_only_python)
     monkeypatch.setattr(
         "warmpass.scheduling.macos.factory.create_macos_warmup_scheduler",
         refuse_real_scheduler,
@@ -70,7 +72,7 @@ def forbid_real_agents_and_schedulers(monkeypatch: pytest.MonkeyPatch) -> None:
 def agent_process(monkeypatch: pytest.MonkeyPatch) -> FakeAgentProcess:
     """The process boundary of every agent adapter, faked in one place."""
     fake = FakeAgentProcess()
-    monkeypatch.setattr("warmpass.agents.base.run", fake)
+    monkeypatch.setattr(warmup_process, "run", fake)
     return fake
 
 
@@ -95,10 +97,8 @@ def scheduler_service(
 
 @pytest.fixture
 def cli_service(
-    scheduler_service: SchedulerService, monkeypatch: pytest.MonkeyPatch
+    fake_scheduler: FakeOSJobScheduler, monkeypatch: pytest.MonkeyPatch
 ) -> SchedulerService:
-    """Make `warmpass schedule ...` use `scheduler_service`."""
-    monkeypatch.setattr(
-        "warmpass.cli.schedule.create_scheduler_service", lambda: scheduler_service
-    )
-    return scheduler_service
+    """Build the CLI's real service with the in-memory OS scheduler."""
+    monkeypatch.setattr(wiring, "create_os_job_scheduler", lambda: fake_scheduler)
+    return wiring.create_scheduler_service()

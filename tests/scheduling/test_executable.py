@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from warmpass.scheduling.base import SchedulerError
+from warmpass.scheduling.base import SchedulingError
 from warmpass.scheduling.executable import (
     find_warmpass_executable,
     get_warmpass_executable_search_path,
@@ -23,6 +23,9 @@ def make_executable(directory: Path) -> Path:
 
 def search_path(*entries: Path | str) -> str:
     return os.pathsep.join(str(entry) for entry in entries)
+
+
+# --- get_warmpass_executable_search_path ---------------------------------------
 
 
 def test_search_path_keeps_only_absolute_inherited_entries_without_duplicates(
@@ -47,6 +50,9 @@ def test_search_path_appends_additional_entries_after_inherited_ones(
     assert result == search_path(inherited, extra)
 
 
+# --- find_warmpass_executable --------------------------------------------------
+
+
 def test_find_returns_the_executable_from_the_first_directory_that_has_one(
     tmp_path: Path,
 ) -> None:
@@ -68,14 +74,14 @@ def test_find_ignores_relative_entries(
     make_executable(tmp_path / "bin")
     monkeypatch.chdir(tmp_path)
 
-    with pytest.raises(SchedulerError, match="Could not find"):
+    with pytest.raises(SchedulingError, match="Could not find"):
         find_warmpass_executable("bin")
 
 
 def test_find_reports_the_executable_name_when_it_is_missing(
     tmp_path: Path,
 ) -> None:
-    with pytest.raises(SchedulerError, match=f"'{EXECUTABLE_NAME}' in PATH"):
+    with pytest.raises(SchedulingError, match=f"'{EXECUTABLE_NAME}' in PATH"):
         find_warmpass_executable(search_path(tmp_path))
 
 
@@ -85,5 +91,5 @@ def test_find_reports_the_executable_name_when_it_is_missing(
 def test_find_skips_a_file_that_is_not_executable(tmp_path: Path) -> None:
     make_executable(tmp_path).chmod(0o644)
 
-    with pytest.raises(SchedulerError, match="Could not find"):
+    with pytest.raises(SchedulingError, match="Could not find"):
         find_warmpass_executable(search_path(tmp_path))

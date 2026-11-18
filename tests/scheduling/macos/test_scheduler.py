@@ -14,7 +14,7 @@ from uuid import UUID
 
 import pytest
 
-from warmpass.scheduling.base import SchedulerError
+from warmpass.scheduling.base import SchedulingError
 from warmpass.scheduling.macos.plist import build_label, build_plist_path
 from warmpass.scheduling.macos.scheduler import MacOSLaunchdScheduler
 from warmpass.scheduling.models import ScheduledTrigger, WeekDay
@@ -120,7 +120,7 @@ def test_register_refuses_an_existing_job_and_leaves_it_alone(
 ) -> None:
     existing = write_plist(launch_agents, SCHEDULE_ID)
 
-    with pytest.raises(SchedulerError, match="already exists"):
+    with pytest.raises(SchedulingError, match="already exists"):
         scheduler.register_job(SCHEDULE_ID, arguments=ARGUMENTS, triggers=TRIGGERS)
 
     assert existing.read_text(encoding="utf-8") == "<plist/>"
@@ -152,7 +152,7 @@ def test_register_failure_keeps_the_plist_and_says_so(
 ) -> None:
     launchctl.failures["bootstrap"] = error
 
-    with pytest.raises(SchedulerError, match=message) as exc_info:
+    with pytest.raises(SchedulingError, match=message) as exc_info:
         scheduler.register_job(SCHEDULE_ID, arguments=ARGUMENTS, triggers=TRIGGERS)
 
     assert "retained" in str(exc_info.value)
@@ -165,7 +165,7 @@ def test_register_reports_a_plist_that_cannot_be_written_and_never_runs_launchct
     (tmp_path / "home" / "Library").mkdir(parents=True)
     (tmp_path / "home" / "Library" / "LaunchAgents").write_text("", encoding="utf-8")
 
-    with pytest.raises(SchedulerError, match="Could not create plist"):
+    with pytest.raises(SchedulingError, match="Could not create plist"):
         scheduler.register_job(SCHEDULE_ID, arguments=ARGUMENTS, triggers=TRIGGERS)
 
     assert launchctl.calls == []
@@ -205,7 +205,7 @@ def test_unregister_failure_keeps_the_plist(
     path = write_plist(launch_agents, SCHEDULE_ID)
     launchctl.failures["bootout"] = error
 
-    with pytest.raises(SchedulerError, match="plist were retained"):
+    with pytest.raises(SchedulingError, match="plist were retained"):
         scheduler.unregister_job(SCHEDULE_ID)
 
     assert path.exists()
@@ -259,7 +259,7 @@ def test_get_job_reports_a_plist_it_cannot_confirm_is_loaded(
     scheduler.register_job(SCHEDULE_ID, arguments=ARGUMENTS, triggers=TRIGGERS)
     launchctl.failures["print"] = error
 
-    with pytest.raises(SchedulerError, match=message):
+    with pytest.raises(SchedulingError, match=message):
         scheduler.get_job(SCHEDULE_ID)
 
 
@@ -269,7 +269,7 @@ def test_get_job_reports_a_corrupt_plist_and_leaves_it_untouched(
     path = write_plist(launch_agents, SCHEDULE_ID)
     path.write_bytes(b"not a plist")
 
-    with pytest.raises(SchedulerError, match="Invalid plist"):
+    with pytest.raises(SchedulingError, match="Invalid plist"):
         scheduler.get_job(SCHEDULE_ID)
 
     assert path.read_bytes() == b"not a plist"
@@ -280,7 +280,7 @@ def test_get_job_reports_an_unreadable_plist(
 ) -> None:
     plist_for(launch_agents).mkdir(parents=True)
 
-    with pytest.raises(SchedulerError, match="Cannot read plist"):
+    with pytest.raises(SchedulingError, match="Cannot read plist"):
         scheduler.get_job(SCHEDULE_ID)
 
 
@@ -292,7 +292,7 @@ def test_get_job_rejects_a_plist_whose_label_belongs_to_another_schedule(
         plist_for(launch_agents, OTHER_ID).read_bytes()
     )
 
-    with pytest.raises(SchedulerError, match="does not match its filename"):
+    with pytest.raises(SchedulingError, match="does not match its filename"):
         scheduler.get_job(SCHEDULE_ID)
 
 
@@ -331,7 +331,7 @@ def test_list_job_ids_rejects_malformed_warmpass_filenames(
     launch_agents.mkdir(parents=True)
     (launch_agents / name).write_text("", encoding="utf-8")
 
-    with pytest.raises(SchedulerError, match="Invalid schedule plist filename"):
+    with pytest.raises(SchedulingError, match="Invalid schedule plist filename"):
         scheduler.list_job_ids()
 
 
@@ -387,7 +387,7 @@ def test_clear_refuses_to_act_on_unexpected_launchctl_output(
     path = write_plist(launch_agents, SCHEDULE_ID)
     launchctl.outputs["list"] = output
 
-    with pytest.raises(SchedulerError, match="Unexpected launchctl list output"):
+    with pytest.raises(SchedulingError, match="Unexpected launchctl list output"):
         scheduler.clear_jobs()
 
     assert launchctl.targets("bootout") == []
@@ -400,7 +400,7 @@ def test_clear_removes_no_files_when_discovery_fails(
     path = write_plist(launch_agents, SCHEDULE_ID)
     launchctl.failures["print"] = subprocess.TimeoutExpired("launchctl", 30)
 
-    with pytest.raises(SchedulerError, match="no files were removed"):
+    with pytest.raises(SchedulingError, match="no files were removed"):
         scheduler.clear_jobs()
 
     assert launchctl.targets("bootout") == []
@@ -416,7 +416,7 @@ def test_clear_removes_no_files_when_a_job_cannot_be_unloaded(
         1, "launchctl", stderr="denied"
     )
 
-    with pytest.raises(SchedulerError, match="no schedule files were removed"):
+    with pytest.raises(SchedulingError, match="no schedule files were removed"):
         scheduler.clear_jobs()
 
     assert path.exists()
@@ -462,7 +462,7 @@ def test_stand_in_launchctl_failure_surfaces_its_stderr_and_keeps_the_plist(
     )
     path = write_plist(launch_agents, SCHEDULE_ID)
 
-    with pytest.raises(SchedulerError, match="no such service"):
+    with pytest.raises(SchedulingError, match="no such service"):
         scheduler.unregister_job(SCHEDULE_ID)
 
     assert path.exists()

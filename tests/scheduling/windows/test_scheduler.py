@@ -10,7 +10,7 @@ from uuid import UUID
 
 import pytest
 
-from warmpass.scheduling.base import SchedulerError
+from warmpass.scheduling.base import SchedulingError
 from warmpass.scheduling.models import ScheduledTrigger, WeekDay
 from warmpass.scheduling.windows.scheduler import WindowsTaskScheduler
 from warmpass.scheduling.windows.task_xml import build_task_name, parse_task_xml
@@ -127,7 +127,7 @@ def test_register_failure_keeps_the_record_and_removes_the_temporary_file(
 ) -> None:
     schtasks.failures["create"] = error
 
-    with pytest.raises(SchedulerError, match=message) as exc_info:
+    with pytest.raises(SchedulingError, match=message) as exc_info:
         scheduler.register_job(SCHEDULE_ID, arguments=ARGUMENTS, triggers=TRIGGERS)
 
     assert "record was retained" in str(exc_info.value)
@@ -161,7 +161,7 @@ def test_unregister_failure_says_the_record_was_retained(
 ) -> None:
     schtasks.failures["delete"] = error
 
-    with pytest.raises(SchedulerError, match="record was retained"):
+    with pytest.raises(SchedulingError, match="record was retained"):
         scheduler.unregister_job(SCHEDULE_ID)
 
 
@@ -199,7 +199,7 @@ def test_get_job_reports_a_task_that_is_listed_but_cannot_be_queried(
     )
     schtasks.outputs["list"] = task_list("\\" + build_task_name(SCHEDULE_ID))
 
-    with pytest.raises(SchedulerError, match="Cannot verify Windows task"):
+    with pytest.raises(SchedulingError, match="Cannot verify Windows task"):
         scheduler.get_job(SCHEDULE_ID)
 
 
@@ -222,7 +222,7 @@ def test_get_job_does_not_treat_an_unavailable_scheduler_as_a_missing_task(
 ) -> None:
     schtasks.failures["query_xml"] = error
 
-    with pytest.raises(SchedulerError, match=message):
+    with pytest.raises(SchedulingError, match=message):
         scheduler.get_job(SCHEDULE_ID)
 
 
@@ -231,7 +231,7 @@ def test_get_job_reports_xml_it_cannot_parse(
 ) -> None:
     schtasks.outputs["query_xml"] = "<Task"
 
-    with pytest.raises(SchedulerError, match="Invalid task XML"):
+    with pytest.raises(SchedulingError, match="Invalid task XML"):
         scheduler.get_job(SCHEDULE_ID)
 
 
@@ -264,7 +264,7 @@ def test_list_job_ids_rejects_malformed_warmpass_task_names(
 ) -> None:
     schtasks.outputs["list"] = task_list("\\" + name)
 
-    with pytest.raises(SchedulerError, match="Invalid Windows task name"):
+    with pytest.raises(SchedulingError, match="Invalid Windows task name"):
         scheduler.list_job_ids()
 
 
@@ -273,7 +273,7 @@ def test_list_job_ids_reports_a_failed_listing(
 ) -> None:
     schtasks.failures["list"] = subprocess.TimeoutExpired("schtasks", 30)
 
-    with pytest.raises(SchedulerError, match="timed out"):
+    with pytest.raises(SchedulingError, match="timed out"):
         scheduler.list_job_ids()
 
 
@@ -306,7 +306,7 @@ def test_clear_attempts_every_task_and_reports_the_ones_that_failed(
         1, "schtasks", stderr="denied"
     )
 
-    with pytest.raises(SchedulerError, match="Could not clear all") as exc_info:
+    with pytest.raises(SchedulingError, match="Could not clear all") as exc_info:
         scheduler.clear_jobs()
 
     assert len(schtasks.deleted_names()) == 2
@@ -363,5 +363,5 @@ def test_stand_in_schtasks_failure_surfaces_its_stderr(tmp_path: Path) -> None:
         home=tmp_path / "home",
     )
 
-    with pytest.raises(SchedulerError, match="Access is denied"):
+    with pytest.raises(SchedulingError, match="Access is denied"):
         scheduler.unregister_job(SCHEDULE_ID)

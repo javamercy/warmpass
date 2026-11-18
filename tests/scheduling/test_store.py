@@ -5,8 +5,8 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from warmpass.agents.models import AgentType
-from warmpass.scheduling.base import SchedulerError
+from warmpass.models import AgentType
+from warmpass.scheduling.base import SchedulingError
 from warmpass.scheduling.models import (
     DailyTrigger,
     HourlyWindow,
@@ -83,7 +83,7 @@ def test_unreadable_record_is_an_error_not_a_missing_record(
     schedule_id = uuid4()
     (directory / f"{schedule_id}.json").mkdir(parents=True)
 
-    with pytest.raises(SchedulerError, match="Cannot read saved schedule"):
+    with pytest.raises(SchedulingError, match="Cannot read saved schedule"):
         store.read(schedule_id)
 
 
@@ -95,7 +95,7 @@ def test_corrupt_record_is_reported_and_left_untouched(
     directory.mkdir()
     record.write_text("{", encoding="utf-8")
 
-    with pytest.raises(SchedulerError, match="invalid JSON record"):
+    with pytest.raises(SchedulingError, match="invalid JSON record"):
         store.read(schedule_id)
 
     assert record.read_text(encoding="utf-8") == "{"
@@ -111,7 +111,7 @@ def test_record_with_a_different_id_than_its_filename_is_rejected(
         schedule.model_dump_json(), encoding="utf-8"
     )
 
-    with pytest.raises(SchedulerError, match="ID mismatch"):
+    with pytest.raises(SchedulingError, match="ID mismatch"):
         store.read(other_id)
 
 
@@ -124,7 +124,7 @@ def test_write_without_overwrite_refuses_an_existing_record(
     schedule = make_schedule()
     store.write(schedule)
 
-    with pytest.raises(SchedulerError, match="already exists"):
+    with pytest.raises(SchedulingError, match="already exists"):
         store.write(schedule, overwrite=False)
 
     assert store.read(schedule.id) == schedule
@@ -138,7 +138,7 @@ def test_write_without_overwrite_does_not_replace_a_corrupt_record(
     record = directory / f"{schedule.id}.json"
     record.write_text("{", encoding="utf-8")
 
-    with pytest.raises(SchedulerError, match="already exists"):
+    with pytest.raises(SchedulingError, match="already exists"):
         store.write(schedule, overwrite=False)
 
     assert record.read_text(encoding="utf-8") == "{"
@@ -174,7 +174,7 @@ def test_failed_replace_keeps_the_old_record_and_leaves_no_temp_file(
         update={"trigger": DailyTrigger(window=HourlyWindow(every=5))}
     )
 
-    with pytest.raises(SchedulerError, match="Could not save schedule"):
+    with pytest.raises(SchedulingError, match="Could not save schedule"):
         store.write(replacement)
 
     assert record.read_bytes() == original
@@ -187,7 +187,7 @@ def test_write_reports_a_store_directory_that_cannot_be_created(
     blocker = tmp_path / "not-a-directory"
     blocker.write_text("", encoding="utf-8")
 
-    with pytest.raises(SchedulerError, match="Could not create schedule store"):
+    with pytest.raises(SchedulingError, match="Could not create schedule store"):
         WarmupScheduleStore(blocker / "schedules").write(make_schedule())
 
 
@@ -224,7 +224,7 @@ def test_list_ids_rejects_malformed_record_filenames(
     directory.mkdir()
     (directory / filename).write_text("{}", encoding="utf-8")
 
-    with pytest.raises(SchedulerError, match="Invalid schedule filename"):
+    with pytest.raises(SchedulingError, match="Invalid schedule filename"):
         store.list_ids()
 
 
