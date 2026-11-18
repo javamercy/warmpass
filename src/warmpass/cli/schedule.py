@@ -1,3 +1,5 @@
+"""CLI subcommands and option parsers for managing warmup schedules."""
+
 import re
 from datetime import time
 from enum import StrEnum
@@ -25,6 +27,8 @@ app = typer.Typer(help="Manage warmup schedules.")
 
 
 class DayOption(StrEnum):
+    """Case-insensitive CLI option values for weekday selection."""
+
     MONDAY = "monday"
     TUESDAY = "tuesday"
     WEDNESDAY = "wednesday"
@@ -34,10 +38,13 @@ class DayOption(StrEnum):
     SUNDAY = "sunday"
 
     def to_weekday(self) -> WeekDay:
+        """Convert the CLI day option to its corresponding domain WeekDay."""
         return WeekDay[self.name]
 
 
 class EveryOption(StrEnum):
+    """CLI option values for hourly schedule frequency (1h to 5h)."""
+
     ONE_HOUR = "1h"
     TWO_HOURS = "2h"
     THREE_HOURS = "3h"
@@ -45,10 +52,12 @@ class EveryOption(StrEnum):
     FIVE_HOURS = "5h"
 
     def to_hours(self) -> int:
+        """Return the integer number of hours represented by the option."""
         return int(self.value[:-1])
 
 
 def parse_schedule_time(value: str) -> time:
+    """Parse a strict 24-hour HH:MM string into a naive time, or raise typer.BadParameter."""
     if not re.fullmatch(r"[0-9]{2}:[0-9]{2}", value):
         raise typer.BadParameter("Use 24-hour time in HH:MM format, e.g. 09:30.")
 
@@ -60,12 +69,7 @@ def parse_schedule_time(value: str) -> time:
         raise typer.BadParameter("Enter a valid time between 00:00 and 23:59.") from exc
 
 
-@app.command(
-    help=(
-        "Add a new warmup schedule "
-        "(e.g. warmpass schedule add --agent codex --trigger daily --from 09:00 --until 17:00 --every 2h)."
-    )
-)
+@app.command()
 def add(
     agent: Annotated[
         AgentType,
@@ -106,6 +110,7 @@ def add(
         typer.Option(help="The model to use for warmup."),
     ] = None,
 ) -> None:
+    """Add a new warmup schedule (e.g. warmpass schedule add --agent codex --trigger daily --from 09:00 --until 17:00 --every 2h)."""
     if trigger == TriggerKind.DAILY and day:
         raise typer.BadParameter(
             "--day can only be used with a weekly trigger.",
@@ -147,12 +152,13 @@ def add(
     print_schedule(schedule, Console())
 
 
-@app.command(help="Remove an existing warmup schedule.")
+@app.command()
 def remove(
     schedule_id: Annotated[
         UUID, typer.Argument(help="The ID of the schedule to remove.")
     ],
 ) -> None:
+    """Remove an existing warmup schedule."""
     try:
         service = create_scheduler_service()
         service.remove(schedule_id)
@@ -163,13 +169,14 @@ def remove(
     typer.echo(f"Schedule '{schedule_id}' has been removed.")
 
 
-@app.command(help="Remove all warmup schedules")
+@app.command()
 def clear(
     yes: Annotated[
         bool,
         typer.Option("--yes", "-y", help="Skip the confirmation prompt."),
     ] = False,
 ) -> None:
+    """Remove all warmup schedules."""
     if not yes and not typer.confirm("Remove all warmup schedules?", default=False):
         typer.echo("Clear cancelled.")
         return
@@ -184,12 +191,13 @@ def clear(
     typer.echo("Warmup schedules cleared.")
 
 
-@app.command(help="Retrieve details of a specific warmup schedule.")
+@app.command()
 def get(
     schedule_id: Annotated[
         UUID, typer.Argument(help="The ID of the schedule to retrieve.")
     ],
 ) -> None:
+    """Retrieve details of a specific warmup schedule."""
     try:
         service = create_scheduler_service()
         schedule = service.get(schedule_id)
@@ -204,8 +212,9 @@ def get(
     print_schedule(schedule, Console())
 
 
-@app.command(name="list", help="List all warmup schedules.")
+@app.command(name="list")
 def get_list() -> None:
+    """List all warmup schedules."""
     try:
         service = create_scheduler_service()
         schedules = service.get_list()

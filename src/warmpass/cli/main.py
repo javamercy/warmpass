@@ -1,3 +1,5 @@
+"""Root Typer application assembling the warmup and schedule commands."""
+
 import typer
 
 from .schedule import app as schedule_app
@@ -11,7 +13,7 @@ app.add_typer(warmup_app)
 
 @app.callback()
 def main() -> None:
-    pass
+    """Run and schedule coding agent warmups."""
 
 
 if __name__ == "__main__":

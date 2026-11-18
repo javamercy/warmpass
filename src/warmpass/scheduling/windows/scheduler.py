@@ -1,3 +1,5 @@
+"""Windows Task Scheduler implementation of the OSJobScheduler protocol."""
+
 import csv
 import subprocess
 import tempfile
@@ -20,6 +22,8 @@ from warmpass.scheduling.windows.task_xml import (
 
 
 class WindowsTaskScheduler(OSJobScheduler):
+    """Manage scheduled Warmpass jobs as Windows Scheduled Tasks via schtasks.exe."""
+
     def __init__(
         self,
         *,
@@ -40,6 +44,7 @@ class WindowsTaskScheduler(OSJobScheduler):
         arguments: list[str],
         triggers: list[ScheduledTrigger],
     ) -> None:
+        """Write a temporary task XML file and register the task via schtasks /create, or raise SchedulingError."""
         configuration = TaskConfiguration.from_job(
             schedule_id,
             warmpass_executable=self._warmpass_executable,
@@ -100,6 +105,7 @@ class WindowsTaskScheduler(OSJobScheduler):
                 xml_path.unlink(missing_ok=True)
 
     def unregister_job(self, schedule_id: UUID) -> None:
+        """Delete the scheduled task for schedule_id via schtasks /delete, or raise SchedulingError."""
         task_name = build_task_name(schedule_id)
 
         try:
@@ -122,6 +128,7 @@ class WindowsTaskScheduler(OSJobScheduler):
             ) from exc
 
     def get_job(self, schedule_id: UUID) -> OSJob | None:
+        """Query and parse the scheduled task XML for schedule_id, returning None if the task does not exist."""
         task_name = build_task_name(schedule_id)
 
         try:
@@ -151,6 +158,7 @@ class WindowsTaskScheduler(OSJobScheduler):
             ) from exc
 
     def list_job_ids(self) -> set[UUID]:
+        """Return schedule IDs for all Warmpass tasks returned by schtasks /query, or raise SchedulingError."""
         try:
             output = self._run_schtasks("/query", "/fo", "csv", "/nh")
         except subprocess.TimeoutExpired as exc:
@@ -190,6 +198,7 @@ class WindowsTaskScheduler(OSJobScheduler):
         return ids
 
     def clear_jobs(self) -> None:
+        """Delete all Warmpass tasks from Windows Task Scheduler, or raise SchedulingError if any deletion fails."""
         ids = self.list_job_ids()
 
         failures: list[str] = []

@@ -1,3 +1,5 @@
+"""Resolution of the Warmpass executable and PATH for scheduled OS jobs."""
+
 import os
 import shutil
 import sys
@@ -7,6 +9,7 @@ from warmpass.scheduling.base import SchedulingError
 
 
 def get_warmpass_executable_search_path(additional_paths: tuple[str, ...] = ()) -> str:
+    """Build a deduplicated PATH string of absolute directories from the current PATH followed by additional_paths."""
     inherited_paths = [
         entry
         for entry in os.getenv("PATH", "").split(os.pathsep)
@@ -19,6 +22,7 @@ def get_warmpass_executable_search_path(additional_paths: tuple[str, ...] = ()) 
 
 
 def find_warmpass_executable(search_path: str) -> Path:
+    """Resolve the absolute path to the warmpass binary within search_path, or raise SchedulingError if not found."""
     executable_name = "warmpass.exe" if sys.platform == "win32" else "warmpass"
 
     for directory in search_path.split(os.pathsep):

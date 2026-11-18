@@ -1,3 +1,5 @@
+"""Rich console formatting for displaying single and listed warmup schedules."""
+
 from typing import assert_never
 
 from rich.console import Console
@@ -13,6 +15,7 @@ from warmpass.scheduling.models import (
 
 
 def format_trigger(trigger: ScheduleTrigger) -> str:
+    """Format a daily or weekly trigger and its local-time window for terminal display."""
     window = trigger.window
 
     start = window.from_.strftime("%H:%M") if window.from_ is not None else "00:00"
@@ -41,6 +44,7 @@ def format_trigger(trigger: ScheduleTrigger) -> str:
 
 
 def print_schedule(schedule: WarmupSchedule, console: Console) -> None:
+    """Render a single warmup schedule as a key-value grid on the given console."""
     table = Table.grid(padding=(0, 2))
     table.add_column(style="bold")
     table.add_column()
@@ -54,6 +58,7 @@ def print_schedule(schedule: WarmupSchedule, console: Console) -> None:
 
 
 def print_schedules(schedules: list[WarmupSchedule], console: Console) -> None:
+    """Render a table of warmup schedules, or an empty-state message when the list is empty."""
     if not schedules:
         console.print("No warmup schedules found.")
         return

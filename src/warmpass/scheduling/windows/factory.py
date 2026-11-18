@@ -1,3 +1,5 @@
+"""Factory and Win32 helpers for the Windows Task Scheduler adapter."""
+
 import ctypes
 import sys
 from ctypes import wintypes
@@ -15,6 +17,7 @@ _ERROR_MORE_DATA = 234
 
 
 def _get_current_user_id() -> str:
+    """Return the current Windows user in SAM-compatible DOMAIN\\user format via Secur32 GetUserNameExW."""
     if sys.platform != "win32":
         raise SchedulingError("Windows Task Scheduler is only supported on Windows.")
 
@@ -49,6 +52,7 @@ def _get_current_user_id() -> str:
 
 
 def _get_system_directory() -> Path:
+    """Return the Windows system directory via Kernel32 GetSystemDirectoryW so schtasks.exe is resolved outside PATH."""
     if sys.platform != "win32":
         raise SchedulingError("Windows Task Scheduler is only supported on Windows.")
 
@@ -73,6 +77,7 @@ def _get_system_directory() -> Path:
 
 
 def create_windows_warmup_scheduler() -> OSJobScheduler:
+    """Resolve warmpass, schtasks.exe, and the current user ID to construct the Windows Task Scheduler adapter."""
     search_path = get_warmpass_executable_search_path()
     warmpass_executable = find_warmpass_executable(search_path=search_path)
 

@@ -1,3 +1,5 @@
+"""Composition root that wires Warmpass services to platform and agent adapters."""
+
 import sys
 from typing import assert_never
 
@@ -32,11 +34,13 @@ def _create_warmup_agent(agent_type: AgentType) -> WarmupAgent:
 
 
 def create_warmup_service(agent_type: AgentType) -> WarmupService:
+    """Create a warmup service configured with the adapter for the given agent."""
     warmup_agent = _create_warmup_agent(agent_type)
     return WarmupService(warmup_agent)
 
 
 def create_os_job_scheduler() -> OSJobScheduler:
+    """Create the OS job scheduler for the current platform, or raise SchedulingError if unsupported."""
     match sys.platform:
         case "darwin":
             from warmpass.scheduling.macos.factory import create_macos_warmup_scheduler
@@ -55,6 +59,7 @@ def create_os_job_scheduler() -> OSJobScheduler:
 
 
 def create_scheduler_service() -> SchedulerService:
+    """Create a scheduler service backed by the user data store and current OS job scheduler."""
     scheduler = create_os_job_scheduler()
     store = WarmupScheduleStore(directory=get_store_directory())
     return SchedulerService(store=store, scheduler=scheduler)

@@ -1,3 +1,5 @@
+"""Filesystem store for persisted warmup schedule JSON records."""
+
 import os
 import tempfile
 from pathlib import Path
@@ -10,10 +12,13 @@ from warmpass.scheduling.models import WarmupSchedule
 
 
 class WarmupScheduleStore:
+    """Read and write per-schedule JSON record files in a local directory."""
+
     def __init__(self, directory: Path) -> None:
         self._directory = directory
 
     def read(self, schedule_id: UUID) -> WarmupSchedule | None:
+        """Read and validate the schedule record for schedule_id, return None if missing, or raise SchedulingError if unreadable or corrupt."""
         schedule_path = self._schedule_file_path(schedule_id)
 
         try:
@@ -41,6 +46,7 @@ class WarmupScheduleStore:
         return schedule
 
     def list_ids(self) -> set[UUID]:
+        """Return the schedule IDs for all JSON records in the store directory, or raise SchedulingError on malformed filenames."""
         try:
             entries = list(self._directory.iterdir())
         except FileNotFoundError:
@@ -72,6 +78,7 @@ class WarmupScheduleStore:
         *,
         overwrite: bool = True,
     ) -> None:
+        """Atomically write a schedule JSON record via a temporary file, raising SchedulingError if overwrite is False and the file exists."""
         schedule_path = self._schedule_file_path(schedule.id)
         if not overwrite and schedule_path.exists():
             raise SchedulingError(
@@ -111,6 +118,7 @@ class WarmupScheduleStore:
                 temp_path.unlink(missing_ok=True)
 
     def remove(self, schedule_id: UUID) -> None:
+        """Delete the schedule JSON record for schedule_id if present, or raise SchedulingError on OS failure."""
         schedule_path = self._schedule_file_path(schedule_id)
         try:
             schedule_path.unlink(missing_ok=True)
@@ -120,6 +128,7 @@ class WarmupScheduleStore:
             ) from exc
 
     def clear(self) -> None:
+        """Delete all schedule JSON records in the store directory, or raise SchedulingError if any record cannot be removed."""
         try:
             entries = list(self._directory.iterdir())
         except FileNotFoundError:

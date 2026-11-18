@@ -1,3 +1,5 @@
+"""Coordination between persisted schedule records and OS job scheduler backends."""
+
 from typing import assert_never
 from uuid import UUID, uuid4
 
@@ -15,6 +17,8 @@ from warmpass.scheduling.store import WarmupScheduleStore
 
 
 class SchedulerService:
+    """Manage warmup schedules across the JSON record store and the OS job scheduler."""
+
     def __init__(
         self,
         *,
@@ -31,6 +35,7 @@ class SchedulerService:
         trigger: ScheduleTrigger,
         model: str | None = None,
     ) -> WarmupSchedule:
+        """Save a new schedule record and register its corresponding OS job, or raise SchedulingError."""
         schedule = WarmupSchedule(
             id=uuid4(),
             agent=agent,
@@ -48,14 +53,17 @@ class SchedulerService:
         return schedule
 
     def remove(self, schedule_id: UUID) -> None:
+        """Unregister the OS job for schedule_id and delete its saved record, or raise SchedulingError."""
         self._scheduler.unregister_job(schedule_id)
         self._store.remove(schedule_id)
 
     def clear(self) -> None:
+        """Unregister all Warmpass OS jobs and delete all saved schedule records, or raise SchedulingError."""
         self._scheduler.clear_jobs()
         self._store.clear()
 
     def get(self, schedule_id: UUID) -> WarmupSchedule | None:
+        """Return the verified schedule for schedule_id, None if absent in both store and OS, or raise SchedulingError on drift."""
         schedule = self._store.read(schedule_id)
         job = self._scheduler.get_job(schedule_id)
 
@@ -90,6 +98,7 @@ class SchedulerService:
         return schedule
 
     def get_list(self) -> list[WarmupSchedule]:
+        """Return all schedules verified across the store and OS scheduler sorted by ID, or raise SchedulingError on drift."""
         ids = self._store.list_ids() | self._scheduler.list_job_ids()
 
         schedules: list[WarmupSchedule] = []
@@ -102,6 +111,7 @@ class SchedulerService:
 
 
 def build_warmup_arguments(*, agent: AgentType, model: str | None = None) -> list[str]:
+    """Build the warmpass warmup CLI arguments stored in an OS job for the given agent and optional model."""
     arguments = ["warmup", "--agent", agent.value]
     if model is not None:
         arguments.append("--model")
@@ -111,6 +121,7 @@ def build_warmup_arguments(*, agent: AgentType, model: str | None = None) -> lis
 
 
 def expand_triggers(trigger: ScheduleTrigger) -> list[ScheduledTrigger]:
+    """Expand a daily or weekly window into concrete local-time fire triggers at every-hour steps."""
     match trigger:
         case DailyTrigger(window=window):
             days: list[WeekDay] | None = None

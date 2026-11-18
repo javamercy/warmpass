@@ -1,3 +1,5 @@
+"""Platform-specific user directories for Warmpass state and logs."""
+
 from pathlib import Path
 from typing import Final
 

@@ -1,3 +1,5 @@
+"""LaunchAgent plist model, serialization, and calendar interval conversion for macOS launchd."""
+
 from pathlib import Path
 from typing import Annotated, Final
 from uuid import UUID
@@ -14,6 +16,8 @@ PLIST_SUFFIX: Final[str] = ".plist"
 
 
 class PlistConfiguration(BaseModel):
+    """LaunchAgent plist structure for a scheduled Warmpass job."""
+
     model_config = ConfigDict(validate_by_alias=True, validate_by_name=True)
 
     label: Annotated[str, Field(alias="Label")]
@@ -33,6 +37,7 @@ class PlistConfiguration(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _normalize_single_interval(cls, data: object) -> object:
+        """Wrap a single StartCalendarInterval dictionary in a list so launchd single-trigger plists validate uniformly."""
         if isinstance(data, dict):
             interval = data.get("StartCalendarInterval")
             if isinstance(interval, dict):
@@ -51,6 +56,7 @@ class PlistConfiguration(BaseModel):
         log_directory: Path,
         warmpass_executable_search_path: str,
     ) -> PlistConfiguration:
+        """Build a LaunchAgent plist configuration for a schedule with HOME, PATH, and per-schedule log files."""
         return cls(
             label=build_label(schedule_id),
             program_arguments=[str(warmpass_executable), *arguments],
@@ -69,9 +75,11 @@ class PlistConfiguration(BaseModel):
         )
 
     def to_plist_dict(self) -> dict[str, object]:
+        """Serialize the configuration to a dictionary keyed by launchd plist aliases."""
         return self.model_dump(by_alias=True)
 
     def to_scheduled_triggers(self) -> list[ScheduledTrigger]:
+        """Convert StartCalendarInterval entries back into ScheduledTrigger values, raising ValueError on unsupported keys or out-of-range weekdays."""
         triggers: list[ScheduledTrigger] = []
         for interval in self.start_calendar_interval:
             if "Hour" not in interval or "Minute" not in interval:
@@ -103,6 +111,7 @@ class PlistConfiguration(BaseModel):
 
 
 def _to_launchd_interval(trigger: ScheduledTrigger) -> dict[str, int]:
+    """Convert a ScheduledTrigger to a launchd StartCalendarInterval dict, mapping Monday=0..Sunday=6 to launchd's Sunday=0..Saturday=6."""
     interval: dict[str, int] = {
         "Hour": trigger.hour,
         "Minute": trigger.minute,
@@ -113,8 +122,10 @@ def _to_launchd_interval(trigger: ScheduledTrigger) -> dict[str, int]:
 
 
 def build_label(schedule_id: UUID | str) -> str:
+    """Return the launchd job label for a schedule ID."""
     return f"{LABEL_PREFIX}{schedule_id}"
 
 
 def build_plist_path(launch_agents_directory: Path, schedule_id: UUID) -> Path:
+    """Return the LaunchAgent plist file path for a schedule ID."""
     return launch_agents_directory / f"{LABEL_PREFIX}{schedule_id}{PLIST_SUFFIX}"

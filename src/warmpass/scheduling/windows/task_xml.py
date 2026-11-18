@@ -1,3 +1,5 @@
+"""Windows Task Scheduler XML models, UTF-16 serialization, and parser."""
+
 import subprocess
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
@@ -17,10 +19,14 @@ _NS: Final[dict[str, str]] = {"t": _TASK_XML_NAMESPACE}
 
 
 class DailyCalendarTrigger(BaseModel):
+    """Task Scheduler daily calendar trigger starting at a naive local activation datetime."""
+
     start_boundary: datetime
 
 
 class WeeklyCalendarTrigger(BaseModel):
+    """Task Scheduler weekly calendar trigger for one time of day across one or more weekdays."""
+
     start_boundary: datetime
     days: list[WeekDay]
 
@@ -29,17 +35,23 @@ type CalendarTrigger = DailyCalendarTrigger | WeeklyCalendarTrigger
 
 
 class ExecAction(BaseModel):
+    """Task Scheduler executable action with command path, argument list, and working directory."""
+
     executable: Path
     arguments: list[str]
     working_directory: Path
 
 
 class TaskPrincipal(BaseModel):
+    """Task Scheduler security principal configured to run only when the user is logged on interactively."""
+
     user_id: str
     logon_type: Literal["InteractiveToken"] = "InteractiveToken"
 
 
 class TaskSettings(BaseModel):
+    """Task Scheduler execution policy settings, including battery, wake, and 5-minute execution timeout rules."""
+
     execution_time_limit: timedelta = timedelta(seconds=300)
     allow_hard_terminate: bool = True
     multiple_instances_policy: Literal["IgnoreNew"] = "IgnoreNew"
@@ -51,6 +63,8 @@ class TaskSettings(BaseModel):
 
 
 class TaskConfiguration(BaseModel):
+    """Complete Windows Task Scheduler task definition prior to XML serialization."""
+
     name: str
     triggers: list[CalendarTrigger]
     action: ExecAction
@@ -69,6 +83,7 @@ class TaskConfiguration(BaseModel):
         user_id: str,
         activation_date: date,
     ) -> Self:
+        """Build a task configuration for a schedule using the given activation date, user principal, and home working directory."""
         return cls(
             name=build_task_name(schedule_id),
             triggers=_to_calendar_triggers(triggers, activation_date),
@@ -86,6 +101,7 @@ def _to_calendar_triggers(
     triggers: list[ScheduledTrigger],
     activation_date: date,
 ) -> list[CalendarTrigger]:
+    """Convert expanded fire triggers into daily or time-grouped weekly Task Scheduler calendar triggers."""
     if not triggers:
         return []
 
@@ -122,10 +138,12 @@ def _to_calendar_triggers(
 
 
 def build_task_name(schedule_id: UUID | str) -> str:
+    """Return the Windows Task Scheduler task name for a schedule ID."""
     return f"{TASK_NAME_PREFIX}{schedule_id}"
 
 
 def build_task_xml(configuration: TaskConfiguration) -> bytes:
+    """Serialize a TaskConfiguration to UTF-16 XML bytes expected by schtasks.exe."""
     task = ET.Element("Task", attrib={"xmlns": _TASK_XML_NAMESPACE})
 
     _build_triggers(task, configuration.triggers)
@@ -137,6 +155,7 @@ def build_task_xml(configuration: TaskConfiguration) -> bytes:
 
 
 def parse_task_xml(schedule_id: UUID, xml_content: str | bytes) -> OSJob:
+    """Parse schtasks /query XML output into an OSJob, raising ValueError on missing or unsupported elements."""
     root = ET.fromstring(xml_content)
 
     command_element = root.find("t:Actions/t:Exec/t:Command", _NS)

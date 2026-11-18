@@ -1,3 +1,5 @@
+"""macOS launchd implementation of the OSJobScheduler protocol."""
+
 import os
 import plistlib
 import subprocess
@@ -20,6 +22,8 @@ from warmpass.scheduling.models import OSJob, ScheduledTrigger
 
 
 class MacOSLaunchdScheduler(OSJobScheduler):
+    """Manage scheduled Warmpass jobs as user LaunchAgents in ~/Library/LaunchAgents via launchctl."""
+
     def __init__(
         self,
         *,
@@ -43,6 +47,7 @@ class MacOSLaunchdScheduler(OSJobScheduler):
         arguments: list[str],
         triggers: list[ScheduledTrigger],
     ) -> None:
+        """Write a LaunchAgent plist and bootstrap it into the user's GUI launchd domain, or raise SchedulingError."""
         plist_path = build_plist_path(self._launch_agents_directory, schedule_id)
         if plist_path.exists():
             raise SchedulingError(f"Schedule {schedule_id} already exists in launchd.")
@@ -83,6 +88,7 @@ class MacOSLaunchdScheduler(OSJobScheduler):
             ) from exc
 
     def unregister_job(self, schedule_id: UUID) -> None:
+        """Boot out the LaunchAgent from the user's GUI launchd domain and remove its plist file, or raise SchedulingError."""
         plist_path = build_plist_path(self._launch_agents_directory, schedule_id)
         target = f"gui/{os.getuid()}/{build_label(schedule_id)}"
 
@@ -113,6 +119,7 @@ class MacOSLaunchdScheduler(OSJobScheduler):
             ) from exc
 
     def get_job(self, schedule_id: UUID) -> OSJob | None:
+        """Read the schedule's plist and verify that the job is loaded in launchd, returning None if the plist is absent."""
         plist_path = build_plist_path(self._launch_agents_directory, schedule_id)
 
         try:
@@ -179,6 +186,7 @@ class MacOSLaunchdScheduler(OSJobScheduler):
         )
 
     def list_job_ids(self) -> set[UUID]:
+        """Return schedule IDs for all Warmpass LaunchAgent plist files, or raise SchedulingError on invalid filenames."""
         try:
             entries = list(self._launch_agents_directory.iterdir())
         except FileNotFoundError:
@@ -211,6 +219,7 @@ class MacOSLaunchdScheduler(OSJobScheduler):
         return ids
 
     def clear_jobs(self) -> None:
+        """Boot out all loaded Warmpass LaunchAgents and delete all Warmpass plist files, or raise SchedulingError."""
         plist_paths: list[Path] = []
         labels: set[str] = set()
 
@@ -290,6 +299,7 @@ class MacOSLaunchdScheduler(OSJobScheduler):
             )
 
     def _write_plist(self, path: Path, data: bytes) -> None:
+        """Atomically write plist bytes via a sibling temporary file so launchd never sees a partial file."""
         temp_path: Path | None = None
         try:
             with tempfile.NamedTemporaryFile(

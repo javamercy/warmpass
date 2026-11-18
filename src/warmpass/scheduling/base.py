@@ -1,3 +1,5 @@
+"""Protocol and base error for OS-native job scheduler backends."""
+
 from typing import Protocol
 from uuid import UUID
 
@@ -18,12 +20,22 @@ class OSJobScheduler(Protocol):
         *,
         arguments: list[str],
         triggers: list[ScheduledTrigger],
-    ) -> None: ...
+    ) -> None:
+        """Register a new OS job for the schedule that invokes warmpass with the given arguments and triggers, or raise SchedulingError."""
+        ...
 
-    def unregister_job(self, schedule_id: UUID) -> None: ...
+    def unregister_job(self, schedule_id: UUID) -> None:
+        """Remove the OS job for the given schedule ID, or raise SchedulingError."""
+        ...
 
-    def get_job(self, schedule_id: UUID) -> OSJob | None: ...
+    def get_job(self, schedule_id: UUID) -> OSJob | None:
+        """Return the installed OS job for the schedule ID, None if absent, or raise SchedulingError if invalid or not loaded."""
+        ...
 
-    def list_job_ids(self) -> set[UUID]: ...
+    def list_job_ids(self) -> set[UUID]:
+        """Return the schedule IDs of all Warmpass jobs known to the OS scheduler, or raise SchedulingError."""
+        ...
 
-    def clear_jobs(self) -> None: ...
+    def clear_jobs(self) -> None:
+        """Remove all Warmpass jobs from the OS scheduler, or raise SchedulingError."""
+        ...

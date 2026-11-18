@@ -1,3 +1,5 @@
+"""CLI command for running an immediate coding agent warmup."""
+
 from datetime import datetime
 from time import perf_counter
 from typing import Annotated
@@ -16,13 +18,14 @@ def _timestamp() -> str:
     return datetime.now().astimezone().isoformat(timespec="seconds")
 
 
-@app.command("warmup", help="Warm up a specific agent immediately.")
+@app.command("warmup")
 def warmup(
     agent: Annotated[AgentType, typer.Option(help="The name of the agent to warm up.")],
     model: Annotated[
         str | None, typer.Option(help="The name of the model to use for warmup.")
     ] = None,
 ) -> None:
+    """Warm up a specific agent immediately."""
     console = Console(stderr=True)
 
     typer.echo(f"{_timestamp()} INFO Warmup started: agent={agent.value}")

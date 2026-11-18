@@ -1,3 +1,5 @@
+"""Factory for the macOS launchd job scheduler adapter."""
+
 import shutil
 from pathlib import Path
 from typing import Final
@@ -29,6 +31,7 @@ def _find_launchctl_executable(search_path: str) -> Path:
 
 
 def create_macos_warmup_scheduler() -> OSJobScheduler:
+    """Resolve warmpass and launchctl executables and construct the macOS launchd scheduler."""
     search_path = get_warmpass_executable_search_path(
         additional_paths=_MACOS_SYSTEM_PATHS
     )

@@ -1,3 +1,5 @@
+"""Shared subprocess runner for unattended coding agent warmup invocations."""
+
 from subprocess import DEVNULL, CompletedProcess, TimeoutExpired, run
 from tempfile import TemporaryDirectory
 
@@ -10,6 +12,7 @@ def run_agent_warmup_process(
     executable: str,
     timeout_seconds: int,
 ) -> CompletedProcess[str]:
+    """Run an agent CLI command in an isolated temporary directory with stdin closed, raising WarmupError on missing binary, timeout, nonzero exit, or empty stdout."""
     try:
         with TemporaryDirectory(prefix="warmpass-warmup-") as working_dir:
             completed = run(
