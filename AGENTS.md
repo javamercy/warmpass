@@ -47,19 +47,63 @@ Apply these whenever a skill is used for a review, critique, or feedback request
 - Be blunt on substance. State problems plainly, with no cushioning and no hedges such as "you might want to consider". Never insult. Always give the principle behind a finding.
 - Praise only when it is specific, as information about what to repeat.
 - Check for too much structure before too little. The maintainer leans toward over-engineering. If the code is fine, say so and stop. Do not manufacture findings.
-- Label each claim as observed (in code), inferred, or taste. For taste, offer options with tradeoffs. Commit to one answer for contract, correctness, and data-loss problems.
+- Label each claim as fact, likely, or opinion (defined under Format). For opinions, offer options with tradeoffs. Commit to one answer for contract, correctness, and data-loss problems.
 - Where a .NET equivalent makes a Python point clearer, name it in one clause. For example, `raise ... from exc` corresponds to `InnerException`, and `with` corresponds to `using`.
 
 ### Format
 
-1. **Verdict.** Two or three sentences: sound, mixed, or needs work, and the single most important point.
-2. **What works.** One to three items, each tied to a file or symbol.
-3. **Findings, in impact order.** At most five. For each, give where (file and symbol), what is wrong and the principle behind it, why it matters, the fix and its tradeoff, and the kind (observed, inferred, or taste). Rank any remaining findings in one sentence.
-4. **Leave alone.** Things that look improvable but are not worth the cost now.
-5. **Outside this review.** One line per issue that belongs to another skill, naming the skill. No analysis.
-6. **Worth learning.** Optional, one line: a concept tied to a finding.
+A review has two sections: a summary and the findings. Do not add other sections. Write so the reader can scan it: short paragraphs, bold labels, tables, and code instead of long prose.
 
-If there are no significant findings, the verdict says so and sections 3 to 6 may be short or empty.
+#### 1. Summary
+
+One or two sentences giving the verdict (sound, mixed, or needs work) and the single most important point. Then a table with one row per finding:
+
+| # | Finding | Where | Impact | Type |
+|---|---------|-------|--------|------|
+| 1 | Short title naming the problem | `module.py` › `symbol` | High | Fact |
+
+Impact is high, medium, or low. Type is one of:
+
+- **Fact:** the problem is visible in the code, and you can point to the line.
+- **Likely:** a reasoned guess, such as how code behaves at runtime or on another platform, that was not confirmed.
+- **Opinion:** a style or design preference where other choices are also reasonable.
+
+If there are no significant findings, say so in the summary and stop. Leave out the table and the findings section.
+
+#### 2. Findings
+
+List findings in impact order, at most five. If there are more, add one line after the last finding that names them in rank order. Write each finding with this template:
+
+````markdown
+### 1. <Short title naming the problem>
+
+**Where:** `src/warmpass/<module>.py` › `<symbol>` · **Impact:** high · **Type:** fact
+
+**Problem.** What is wrong, in one or two sentences.
+**Principle.** The rule or smell behind it, in one sentence.
+**Why it matters.** The concrete consequence, such as a bug, a lost failure, a broken job, or a change that becomes painful.
+
+**Fix.** What to change and why that solves the problem, in one or two sentences.
+
+```python
+# Before: the current code, trimmed to the relevant lines
+```
+
+```python
+# After: the proposed code
+```
+
+**Tradeoff.** What the fix costs or gives up.
+
+<Fields the skill adds for its findings, as a short bullet list>
+````
+
+Rules for findings:
+
+- Every finding shows code. Use real code from the repository and trim it with `# ...`. Keep each block short, about 15 lines at most, and show only what changes.
+- When before-and-after code does not fit, such as a module dependency or a whole-suite gap, use a small table or a trace such as `cli.main → schedule.service → os_jobs.launchd`.
+- For opinion findings, compare the options in a table with columns for the option, what it gains, and what it costs. Then give a recommendation.
+- If you notice an issue that belongs to a skill you are not using, add a single line after the findings that names the skill and the issue, as described under Skills.
 
 ### Implementation tasks
 
