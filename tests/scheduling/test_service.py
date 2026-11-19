@@ -299,13 +299,38 @@ def test_get_reports_a_job_without_a_record(
         scheduler_service.get(schedule.id)
 
 
-def test_get_reports_a_job_whose_triggers_differ_from_the_record(
+def test_get_accepts_a_job_with_the_same_triggers_in_a_different_order(
     scheduler_service: SchedulerService, fake_scheduler: FakeOSJobScheduler
+) -> None:
+    trigger = WeeklyTrigger(
+        days=[FRI, MON],
+        window=HourlyWindow(from_=time(9), until=time(13), every=2),
+    )
+    schedule = scheduler_service.add(agent=AgentType.CODEX, trigger=trigger)
+    job = fake_scheduler.jobs[schedule.id]
+    fake_scheduler.jobs[schedule.id] = job.model_copy(
+        update={"triggers": job.triggers[::-1]}
+    )
+
+    assert scheduler_service.get(schedule.id) == schedule
+
+
+@pytest.mark.parametrize(
+    "trigger_indices",
+    [
+        pytest.param([0], id="missing-trigger"),
+        pytest.param([0, 1, 0], id="duplicate-trigger"),
+    ],
+)
+def test_get_reports_a_job_whose_triggers_differ_from_the_record(
+    scheduler_service: SchedulerService,
+    fake_scheduler: FakeOSJobScheduler,
+    trigger_indices: list[int],
 ) -> None:
     schedule = scheduler_service.add(agent=AgentType.CODEX, trigger=make_trigger())
     job = fake_scheduler.jobs[schedule.id]
     fake_scheduler.jobs[schedule.id] = job.model_copy(
-        update={"triggers": job.triggers[:1]}
+        update={"triggers": [job.triggers[index] for index in trigger_indices]}
     )
 
     with pytest.raises(SchedulingError, match="different triggers"):

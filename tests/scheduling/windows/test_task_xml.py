@@ -25,11 +25,13 @@ NS = {"t": "http://schemas.microsoft.com/windows/2004/02/mit/task"}
 MON, FRI = WeekDay.MONDAY, WeekDay.FRIDAY
 
 
-def build_xml(triggers: list[ScheduledTrigger]) -> bytes:
+def build_xml(
+    triggers: list[ScheduledTrigger], *, arguments: list[str] | None = None
+) -> bytes:
     configuration = TaskConfiguration.from_job(
         SCHEDULE_ID,
         warmpass_executable=EXECUTABLE,
-        arguments=ARGUMENTS,
+        arguments=ARGUMENTS if arguments is None else arguments,
         triggers=triggers,
         home=HOME,
         user_id="DOMAIN\\user",
@@ -132,6 +134,25 @@ def test_task_xml_round_trips_command_and_triggers(
     assert job.schedule_id == SCHEDULE_ID
     assert job.command == [str(EXECUTABLE), *ARGUMENTS]
     assert job.triggers == triggers
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        pytest.param("custom model", id="space"),
+        pytest.param("", id="empty"),
+        pytest.param(r"custom\"model", id="backslash-before-quote"),
+        pytest.param("custom model\\", id="trailing-backslash-in-quoted-argument"),
+        pytest.param("custom/model\n", id="trailing-line-feed"),
+    ],
+)
+def test_task_xml_preserves_model_argument_on_read_back(model: str) -> None:
+    arguments = ["warmup", "--agent", "codex", "--model", model]
+    xml = build_xml([ScheduledTrigger(hour=9, minute=30)], arguments=arguments)
+
+    job = parse_task_xml(SCHEDULE_ID, xml)
+
+    assert job.command == [str(EXECUTABLE), *arguments]
 
 
 def wrap(body: str) -> str:

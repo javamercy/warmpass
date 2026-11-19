@@ -22,7 +22,7 @@ class WarmupScheduleStore:
         schedule_path = self._schedule_file_path(schedule_id)
 
         try:
-            data = schedule_path.read_text(encoding="utf-8")
+            data = schedule_path.read_bytes()
         except FileNotFoundError:
             return None
         except OSError as exc:

@@ -87,18 +87,25 @@ def test_unreadable_record_is_an_error_not_a_missing_record(
         store.read(schedule_id)
 
 
+@pytest.mark.parametrize(
+    "contents",
+    [
+        pytest.param(b"{", id="invalid-json"),
+        pytest.param(b'{"model": "\xff"}', id="invalid-utf8"),
+    ],
+)
 def test_corrupt_record_is_reported_and_left_untouched(
-    directory: Path, store: WarmupScheduleStore
+    directory: Path, store: WarmupScheduleStore, contents: bytes
 ) -> None:
     schedule_id = uuid4()
     record = directory / f"{schedule_id}.json"
     directory.mkdir()
-    record.write_text("{", encoding="utf-8")
+    record.write_bytes(contents)
 
     with pytest.raises(SchedulingError, match="invalid JSON record"):
         store.read(schedule_id)
 
-    assert record.read_text(encoding="utf-8") == "{"
+    assert record.read_bytes() == contents
 
 
 def test_record_with_a_different_id_than_its_filename_is_rejected(

@@ -166,15 +166,14 @@ def parse_task_xml(schedule_id: UUID, xml_content: str | bytes) -> OSJob:
     ):
         raise ValueError("Task XML is missing an Exec Command.")
 
-    arguments_element = root.find("t:Actions/t:Exec/t:Arguments", _NS)
-    arguments_text = (
-        arguments_element.text.strip()
-        if arguments_element is not None and arguments_element.text is not None
-        else ""
+    arguments_text = root.findtext(
+        "t:Actions/t:Exec/t:Arguments",
+        default="",
+        namespaces=_NS,
     )
     command = [
         command_element.text.strip(),
-        *(arguments_text.split() if arguments_text else []),
+        *_parse_windows_arguments(arguments_text),
     ]
 
     triggers: list[ScheduledTrigger] = []
@@ -218,6 +217,47 @@ def parse_task_xml(schedule_id: UUID, xml_content: str | bytes) -> OSJob:
         command=command,
         triggers=triggers,
     )
+
+
+def _parse_windows_arguments(text: str) -> list[str]:
+    """Decode arguments written by subprocess.list2cmdline."""
+    arguments: list[str] = []
+    parts: list[str] = []
+    in_quotes = False
+    backslashes = 0
+
+    for char in text:
+        if char == "\\":
+            backslashes += 1
+            continue
+
+        if char == '"':
+            # Pairs of backslashes before a quote become literal backslashes.
+            # An odd backslash escapes the quote.
+            parts.append("\\" * (backslashes // 2))
+            if backslashes % 2:
+                parts.append('"')
+            else:
+                in_quotes = not in_quotes
+        else:
+            if backslashes:
+                parts.append("\\" * backslashes)
+
+            if char in " \t" and not in_quotes:
+                if parts:
+                    arguments.append("".join(parts))
+                    parts.clear()
+            else:
+                parts.append(char)
+
+        backslashes = 0
+
+    if backslashes:
+        parts.append("\\" * backslashes)
+    if parts:
+        arguments.append("".join(parts))
+
+    return arguments
 
 
 def _build_triggers(task: ET.Element, triggers: list[CalendarTrigger]) -> None:

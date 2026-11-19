@@ -75,15 +75,15 @@ class SchedulerService:
             )
         elif job is None:
             raise SchedulingError(
-                f"Schedule {schedule_id} has a saved record, "
-                "but its OS job is missing or not loaded."
+                f"Schedule {schedule_id} has a saved record, but its OS job is missing or not loaded."
             )
 
         expected_triggers = expand_triggers(schedule.trigger)
-        if job.triggers != expected_triggers:
+        if sorted(job.triggers, key=_trigger_key) != sorted(
+            expected_triggers, key=_trigger_key
+        ):
             raise SchedulingError(
-                f"Schedule {schedule_id} in the OS has different triggers than its saved record. "
-                "Remove and re-add the schedule."
+                f"Schedule {schedule_id} in the OS has different triggers than its saved record."
             )
 
         expected_arguments = build_warmup_arguments(
@@ -91,8 +91,7 @@ class SchedulerService:
         )
         if job.command[1:] != expected_arguments:
             raise SchedulingError(
-                f"Schedule {schedule_id} in the OS has different command arguments than its saved record. "
-                "Remove and re-add the schedule."
+                f"Schedule {schedule_id} in the OS has different command arguments than its saved record."
             )
 
         return schedule
@@ -156,3 +155,9 @@ def expand_triggers(trigger: ScheduleTrigger) -> list[ScheduledTrigger]:
                 )
 
     return expanded
+
+
+def _trigger_key(trigger: ScheduledTrigger) -> tuple[int, int, int]:
+    """Return a tuple key for sorting ScheduledTrigger objects by hour, minute, and weekday (with None treated as -1)."""
+    weekday = -1 if trigger.weekday is None else int(trigger.weekday)
+    return trigger.hour, trigger.minute, weekday
