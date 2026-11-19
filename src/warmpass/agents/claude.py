@@ -39,6 +39,5 @@ class ClaudeWarmupAgent(WarmupAgent):
 
         run_agent_warmup_process(
             command,
-            executable=self._executable,
-            timeout_seconds=self._timeout_seconds,
+            timeout=self._timeout_seconds,
         )

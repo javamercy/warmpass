@@ -12,8 +12,7 @@ from typing import Any
 import pytest
 
 from tests.support.fakes import FakeAgentProcess, FakeOSJobScheduler
-from warmpass import wiring
-from warmpass.agents import warmup_process
+from warmpass import process, wiring
 from warmpass.paths import get_store_directory
 from warmpass.scheduling.service import SchedulerService
 from warmpass.scheduling.store import WarmupScheduleStore
@@ -39,25 +38,29 @@ def isolated_user_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
 
 
 @pytest.fixture(autouse=True)
-def forbid_real_agents_and_schedulers(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Fail loudly if a test would run a real agent or build a real OS scheduler.
-
-    Agent processes may only run the current Python interpreter, which is how
-    stand-in agents are written. Tests that need a scheduler use the fakes.
-    """
+def forbid_real_agents_and_schedulers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Allow only the Python interpreter and the test's scheduler stand-ins."""
     real_run = subprocess.run
+    allowed_executables = {
+        sys.executable,
+        str(tmp_path / "launchctl"),
+        str(tmp_path / "schtasks"),
+        str(tmp_path / "schtasks.cmd"),
+    }
 
-    def run_only_python(
+    def run_only_stand_ins(
         command: list[str], **options: Any
     ) -> subprocess.CompletedProcess[str]:
-        if command[0] != sys.executable:
+        if command[0] not in allowed_executables:
             raise AssertionError(f"Test tried to run a real program: {command[0]!r}")
         return real_run(command, **options)
 
     def refuse_real_scheduler() -> None:
         raise AssertionError("Test tried to build a real OS job scheduler.")
 
-    monkeypatch.setattr(warmup_process, "run", run_only_python)
+    monkeypatch.setattr(process.subprocess, "run", run_only_stand_ins)
     monkeypatch.setattr(
         "warmpass.scheduling.macos.factory.create_macos_warmup_scheduler",
         refuse_real_scheduler,
@@ -72,7 +75,7 @@ def forbid_real_agents_and_schedulers(monkeypatch: pytest.MonkeyPatch) -> None:
 def agent_process(monkeypatch: pytest.MonkeyPatch) -> FakeAgentProcess:
     """The process boundary of every agent adapter, faked in one place."""
     fake = FakeAgentProcess()
-    monkeypatch.setattr(warmup_process, "run", fake)
+    monkeypatch.setattr(process.subprocess, "run", fake)
     return fake
 
 

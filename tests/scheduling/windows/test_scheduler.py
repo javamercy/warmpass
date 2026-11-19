@@ -106,20 +106,22 @@ def test_register_creates_one_task_from_a_temporary_xml_file_and_removes_the_fil
     [
         pytest.param(
             subprocess.CalledProcessError(1, "schtasks", stderr="Access is denied"),
-            "Access is denied",
+            f"Could not register schedule {SCHEDULE_ID} with Task Scheduler: Access is denied",
             id="rejected",
         ),
         pytest.param(
-            OSError("no such file"), "Could not run schtasks", id="cannot-run"
+            OSError("no such file"),
+            f"Could not run schtasks for schedule {SCHEDULE_ID}: no such file.",
+            id="cannot-run",
         ),
         pytest.param(
             subprocess.TimeoutExpired("schtasks", 30),
-            "may have been registered",
-            id="timeout-is-unknown-outcome",
+            f"Registration of schedule {SCHEDULE_ID} timed out.",
+            id="timeout",
         ),
     ],
 )
-def test_register_failure_keeps_the_record_and_removes_the_temporary_file(
+def test_register_failure_reports_the_error_and_removes_the_temporary_file(
     scheduler: WindowsTaskScheduler,
     schtasks: FakeSchtasks,
     error: BaseException,
@@ -127,10 +129,10 @@ def test_register_failure_keeps_the_record_and_removes_the_temporary_file(
 ) -> None:
     schtasks.failures["create"] = error
 
-    with pytest.raises(SchedulingError, match=message) as exc_info:
+    with pytest.raises(SchedulingError) as exc_info:
         scheduler.register_job(SCHEDULE_ID, arguments=ARGUMENTS, triggers=TRIGGERS)
 
-    assert "record was retained" in str(exc_info.value)
+    assert str(exc_info.value) == message
     assert schtasks.created_xml_path is not None
     assert not schtasks.created_xml_path.exists()
 
@@ -147,22 +149,52 @@ def test_unregister_deletes_the_task_by_name(
 
 
 @pytest.mark.parametrize(
-    "error",
+    ("error", "message"),
     [
         pytest.param(
-            subprocess.CalledProcessError(1, "schtasks", stderr="denied"), id="rejected"
+            subprocess.CalledProcessError(1, "schtasks", stderr="denied"),
+            f"Could not delete Windows task {build_task_name(SCHEDULE_ID)!r}: denied.",
+            id="rejected",
         ),
-        pytest.param(OSError("no such file"), id="cannot-run"),
-        pytest.param(subprocess.TimeoutExpired("schtasks", 30), id="timeout"),
+        pytest.param(
+            OSError("no such file"),
+            f"Could not run schtasks to remove schedule {SCHEDULE_ID}: no such file.",
+            id="cannot-run",
+        ),
+        pytest.param(
+            subprocess.TimeoutExpired("schtasks", 30),
+            f"Removing Windows task {build_task_name(SCHEDULE_ID)!r} timed out.",
+            id="timeout",
+        ),
     ],
 )
-def test_unregister_failure_says_the_record_was_retained(
-    scheduler: WindowsTaskScheduler, schtasks: FakeSchtasks, error: BaseException
+def test_unregister_failure_reports_the_task_and_error(
+    scheduler: WindowsTaskScheduler,
+    schtasks: FakeSchtasks,
+    error: BaseException,
+    message: str,
 ) -> None:
     schtasks.failures["delete"] = error
 
-    with pytest.raises(SchedulingError, match="record was retained"):
+    with pytest.raises(SchedulingError) as exc_info:
         scheduler.unregister_job(SCHEDULE_ID)
+
+    assert str(exc_info.value) == message
+
+
+def test_unregister_failure_without_stderr_reports_subprocess_error(
+    scheduler: WindowsTaskScheduler, schtasks: FakeSchtasks
+) -> None:
+    error = subprocess.CalledProcessError(1, "schtasks", output="stdout marker")
+    schtasks.failures["delete"] = error
+
+    with pytest.raises(
+        SchedulingError, match="returned non-zero exit status 1"
+    ) as exc_info:
+        scheduler.unregister_job(SCHEDULE_ID)
+
+    assert build_task_name(SCHEDULE_ID) in str(exc_info.value)
+    assert "stdout marker" not in str(exc_info.value)
 
 
 # --- get_job ------------------------------------------------------------------
@@ -310,8 +342,10 @@ def test_clear_attempts_every_task_and_reports_the_ones_that_failed(
         scheduler.clear_jobs()
 
     assert len(schtasks.deleted_names()) == 2
-    assert build_task_name(SCHEDULE_ID) in str(exc_info.value)
-    assert build_task_name(OTHER_ID) in str(exc_info.value)
+    assert f"Cannot delete {build_task_name(SCHEDULE_ID)}: denied" in str(
+        exc_info.value
+    )
+    assert f"Cannot delete {build_task_name(OTHER_ID)}: denied" in str(exc_info.value)
 
 
 # --- the adapter's own process handling, against a stand-in schtasks ---------

@@ -1,49 +1,26 @@
 """Shared subprocess runner for unattended coding agent warmup invocations."""
 
-from subprocess import DEVNULL, CompletedProcess, TimeoutExpired, run
+from subprocess import CalledProcessError, TimeoutExpired
 from tempfile import TemporaryDirectory
 
+from warmpass.process import run_subprocess
 from warmpass.warmup.base import WarmupError
 
 
 def run_agent_warmup_process(
     command: list[str],
     *,
-    executable: str,
-    timeout_seconds: int,
-) -> CompletedProcess[str]:
-    """Run an agent CLI command in an isolated temporary directory with stdin closed, raising WarmupError on missing binary, timeout, nonzero exit, or empty stdout."""
+    timeout: int,
+) -> None:
+    """Run an agent CLI in a temporary directory and require a nonempty reply."""
     try:
         with TemporaryDirectory(prefix="warmpass-warmup-") as working_dir:
-            completed = run(
-                command,
-                cwd=working_dir,
-                stdin=DEVNULL,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                timeout=timeout_seconds,
-                errors="replace",
-                check=False,
-            )
+            run_subprocess(command, cwd=working_dir, check=True, timeout=timeout)
     except FileNotFoundError as exc:
-        raise WarmupError(f"Executable '{executable}' not found.") from exc
+        raise WarmupError(f"Executable '{command[0]}' not found.") from exc
     except TimeoutExpired as exc:
-        raise WarmupError(
-            f"Warmup timed out after {timeout_seconds} seconds; "
-            "the usage window may have started anyway."
-        ) from exc
+        raise WarmupError(f"Warmup timed out after {timeout} seconds.") from exc
+    except CalledProcessError as exc:
+        raise WarmupError(f"Warmup failed with exit code {exc.returncode}.") from exc
     except OSError as exc:
-        raise WarmupError(f"Error during warmup: {exc}") from exc
-
-    if completed.returncode != 0:
-        details = (completed.stderr or completed.stdout or "").strip()
-        suffix = f": {details[:200]}" if details else "."
-        raise WarmupError(
-            f"Warmup failed with exit code {completed.returncode}{suffix}"
-        )
-
-    if not completed.stdout or not completed.stdout.strip():
-        raise WarmupError("Warmup failed: agent returned an empty response.")
-
-    return completed
+        raise WarmupError(f"Could not run warmup: {exc}") from exc

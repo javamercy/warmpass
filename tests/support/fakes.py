@@ -34,7 +34,10 @@ class FakeAgentProcess:
         self.calls.append(AgentCall(command=command, options=options))
         if self.error is not None:
             raise self.error
-        return CompletedProcess(command, self.returncode, self.stdout, self.stderr)
+        completed = CompletedProcess(command, self.returncode, self.stdout, self.stderr)
+        if options.get("check"):
+            completed.check_returncode()
+        return completed
 
 
 class FakeOSJobScheduler:

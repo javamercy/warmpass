@@ -10,13 +10,16 @@ from uuid import UUID
 
 from pydantic import ValidationError
 
+from warmpass.process import run_subprocess
 from warmpass.scheduling.base import OSJobScheduler, SchedulingError
 from warmpass.scheduling.macos.plist import (
     LABEL_PREFIX,
     PLIST_SUFFIX,
     PlistConfiguration,
+    build_domain,
     build_label,
     build_plist_path,
+    build_target,
 )
 from warmpass.scheduling.models import OSJob, ScheduledTrigger
 
@@ -50,7 +53,7 @@ class MacOSLaunchdScheduler(OSJobScheduler):
         """Write a LaunchAgent plist and bootstrap it into the user's GUI launchd domain, or raise SchedulingError."""
         plist_path = build_plist_path(self._launch_agents_directory, schedule_id)
         if plist_path.exists():
-            raise SchedulingError(f"Schedule {schedule_id} already exists in launchd.")
+            raise SchedulingError(f"LaunchAgent plist already exists at {plist_path}.")
 
         configuration = PlistConfiguration.from_job(
             schedule_id,
@@ -70,52 +73,49 @@ class MacOSLaunchdScheduler(OSJobScheduler):
             self._write_plist(plist_path, data)
         except OSError as exc:
             raise SchedulingError(
-                f"Could not create plist for schedule {schedule_id}: {exc}. "
-                "The schedule record was saved; inspect it before retrying."
+                f"Could not create plist for schedule {schedule_id}: {exc}."
             ) from exc
 
         try:
-            self._run_launchctl("bootstrap", f"gui/{os.getuid()}", str(plist_path))
-        except (subprocess.CalledProcessError, OSError) as exc:
+            self._run_launchctl("bootstrap", build_domain(os.getuid()), str(plist_path))
+        except subprocess.CalledProcessError as exc:
             raise SchedulingError(
-                f"Could not register schedule {schedule_id} with launchd. "
-                "The record and plist were retained; inspect the job before retrying."
+                f"Could not register schedule {schedule_id} with launchd: {exc.stderr or exc}"
+            ) from exc
+        except OSError as exc:
+            raise SchedulingError(
+                f"Could not register schedule {schedule_id} with launchd: {exc}"
             ) from exc
         except subprocess.TimeoutExpired as exc:
             raise SchedulingError(
-                f"Registration of schedule {schedule_id} timed out. "
-                "The job may have loaded. The record and plist were retained."
+                f"Registration of schedule {schedule_id} timed out."
             ) from exc
 
     def unregister_job(self, schedule_id: UUID) -> None:
         """Boot out the LaunchAgent from the user's GUI launchd domain and remove its plist file, or raise SchedulingError."""
         plist_path = build_plist_path(self._launch_agents_directory, schedule_id)
-        target = f"gui/{os.getuid()}/{build_label(schedule_id)}"
+        target = build_target(os.getuid(), schedule_id)
 
         try:
             self._run_launchctl("bootout", target)
         except subprocess.TimeoutExpired as exc:
             raise SchedulingError(
-                f"Removing schedule {schedule_id} timed out; its loaded status is "
-                "unknown. The record and plist were retained."
+                f"Removing schedule {schedule_id} timed out."
             ) from exc
         except subprocess.CalledProcessError as exc:
             raise SchedulingError(
-                f"Could not unload schedule {schedule_id}: {exc.stderr or exc}. "
-                "The record and plist were retained."
+                f"Could not unload schedule {schedule_id}: {exc.stderr or exc}."
             ) from exc
         except OSError as exc:
             raise SchedulingError(
-                f"Could not run launchctl for schedule {schedule_id}: {exc}. "
-                "The record and plist were retained."
+                f"Could not run launchctl for schedule {schedule_id}: {exc}."
             ) from exc
 
         try:
             plist_path.unlink(missing_ok=True)
         except OSError as exc:
             raise SchedulingError(
-                f"Schedule {schedule_id} was unloaded, but its plist could not be "
-                f"removed: {exc}. The record was retained."
+                f"Schedule {schedule_id} was unloaded, but its plist could not be removed: {exc}."
             ) from exc
 
     def get_job(self, schedule_id: UUID) -> OSJob | None:
@@ -124,7 +124,11 @@ class MacOSLaunchdScheduler(OSJobScheduler):
 
         try:
             data = plist_path.read_bytes()
-        except FileNotFoundError:
+        except FileNotFoundError as exc:
+            if build_label(schedule_id) in self._loaded_job_labels():
+                raise SchedulingError(
+                    f"Schedule {schedule_id} is loaded in launchd, but its plist is missing."
+                ) from exc
             return None
         except OSError as exc:
             raise SchedulingError(
@@ -161,18 +165,16 @@ class MacOSLaunchdScheduler(OSJobScheduler):
                 f"Plist for schedule {schedule_id} has no executable."
             )
 
-        target = f"gui/{os.getuid()}/{build_label(schedule_id)}"
+        target = build_target(os.getuid(), schedule_id)
         try:
             self._run_launchctl("print", target)
         except subprocess.TimeoutExpired as exc:
             raise SchedulingError(
-                f"Checking launchd for schedule {schedule_id} timed out; "
-                "its loaded status is unknown."
+                f"Checking launchd for schedule {schedule_id} timed out."
             ) from exc
         except subprocess.CalledProcessError as exc:
             raise SchedulingError(
-                f"Cannot verify that schedule {schedule_id} is loaded in launchd: "
-                f"{exc.stderr or exc}"
+                f"Cannot verify that schedule {schedule_id} is loaded in launchd: {exc.stderr or exc}"
             ) from exc
         except OSError as exc:
             raise SchedulingError(
@@ -187,23 +189,27 @@ class MacOSLaunchdScheduler(OSJobScheduler):
 
     def list_job_ids(self) -> set[UUID]:
         """Return schedule IDs for all Warmpass LaunchAgent plist files, or raise SchedulingError on invalid filenames."""
+        entries: list[Path]
+
         try:
             entries = list(self._launch_agents_directory.iterdir())
         except FileNotFoundError:
-            return set()
+            entries = []
         except OSError as exc:
             raise SchedulingError(
                 f"Cannot list plist files in {self._launch_agents_directory}: {exc}"
             ) from exc
 
         ids: set[UUID] = set()
+
         for entry in sorted(entries):
             if not entry.name.startswith(LABEL_PREFIX) or not entry.name.endswith(
                 PLIST_SUFFIX
             ):
                 continue
 
-            name = entry.name[len(LABEL_PREFIX) : -len(PLIST_SUFFIX)]
+            name = entry.name.removeprefix(LABEL_PREFIX).removesuffix(PLIST_SUFFIX)
+
             try:
                 schedule_id = UUID(name)
             except ValueError as exc:
@@ -216,21 +222,33 @@ class MacOSLaunchdScheduler(OSJobScheduler):
 
             ids.add(schedule_id)
 
+        for label in sorted(self._loaded_job_labels()):
+            try:
+                schedule_id = UUID(label.removeprefix(LABEL_PREFIX))
+            except ValueError as exc:
+                raise SchedulingError(
+                    f"Invalid loaded schedule label: {label!r}"
+                ) from exc
+
+            if build_label(schedule_id) != label:
+                raise SchedulingError(f"Invalid loaded schedule label: {label!r}")
+
+            ids.add(schedule_id)
+
         return ids
 
     def clear_jobs(self) -> None:
         """Boot out all loaded Warmpass LaunchAgents and delete all Warmpass plist files, or raise SchedulingError."""
-        plist_paths: list[Path] = []
-        labels: set[str] = set()
-
         try:
             entries: list[Path] = list(self._launch_agents_directory.iterdir())
         except FileNotFoundError:
             entries: list[Path] = []
         except OSError as exc:
             raise SchedulingError(
-                f"Cannot list schedule files in {self._launch_agents_directory}: {exc}"
+                f"Cannot list LaunchAgent plists in {self._launch_agents_directory}: {exc}"
             ) from exc
+
+        plist_paths: list[Path] = []
 
         for entry in entries:
             if not entry.name.startswith(LABEL_PREFIX) or not entry.name.endswith(
@@ -240,37 +258,10 @@ class MacOSLaunchdScheduler(OSJobScheduler):
 
             plist_paths.append(entry)
 
-        domain = f"gui/{os.getuid()}"
-        try:
-            self._run_launchctl("print", domain)
-            output = self._run_launchctl("list")
-        except (
-            subprocess.CalledProcessError,
-            subprocess.TimeoutExpired,
-            OSError,
-        ) as exc:
-            raise SchedulingError(
-                f"Cannot discover loaded schedules; no files were removed: {exc}"
-            ) from exc
-
-        lines = output.splitlines()
-        if not lines or lines[0].split() != ["PID", "Status", "Label"]:
-            raise SchedulingError(
-                "Unexpected launchctl list output; no schedule files were removed."
-            )
-
-        for line in lines[1:]:
-            parts = line.split(maxsplit=2)
-            if len(parts) != 3:
-                raise SchedulingError(
-                    "Unexpected launchctl list output; no schedule files were removed."
-                )
-
-            label = parts[2]
-            if label.startswith(LABEL_PREFIX) and label != LABEL_PREFIX:
-                labels.add(label)
-
+        labels = self._loaded_job_labels()
+        domain = build_domain(os.getuid())
         failures: list[str] = []
+
         for label in sorted(labels):
             target = f"{domain}/{label}"
             try:
@@ -278,11 +269,11 @@ class MacOSLaunchdScheduler(OSJobScheduler):
             except subprocess.CalledProcessError as exc:
                 failures.append(f"Cannot unload {label}: {exc.stderr or exc}")
             except (subprocess.TimeoutExpired, OSError) as exc:
-                failures.append(f"Cannot unload {label}; outcome may be unknown: {exc}")
+                failures.append(f"Cannot unload {label}: {exc}")
 
         if failures:
             raise SchedulingError(
-                "Could not clear all launchd jobs; no schedule files were removed. "
+                "Could not clear all launchd jobs."
                 "Some jobs may already have been unloaded: " + "; ".join(failures)
             )
 
@@ -294,9 +285,37 @@ class MacOSLaunchdScheduler(OSJobScheduler):
 
         if failures:
             raise SchedulingError(
-                "Some plist files could not be removed; other jobs and files "
-                "may already have been cleared: " + "; ".join(failures)
+                "Some plist files could not be removed: " + "; ".join(failures)
             )
+
+    def _loaded_job_labels(self) -> set[str]:
+        try:
+            self._run_launchctl("print", build_domain(os.getuid()))
+            output = self._run_launchctl("list")
+        except (
+            subprocess.CalledProcessError,
+            subprocess.TimeoutExpired,
+            OSError,
+        ) as exc:
+            raise SchedulingError(f"Cannot discover loaded schedules: {exc}") from exc
+
+        lines = output.splitlines()
+
+        if not lines or lines[0].split() != ["PID", "Status", "Label"]:
+            raise SchedulingError("Unexpected launchctl list output.")
+
+        labels: set[str] = set()
+
+        for line in lines[1:]:
+            parts = line.split(maxsplit=2)
+            if len(parts) != 3:
+                raise SchedulingError("Unexpected launchctl list output.")
+
+            label = parts[2]
+            if label.startswith(LABEL_PREFIX) and label != LABEL_PREFIX:
+                labels.add(label)
+
+        return labels
 
     def _write_plist(self, path: Path, data: bytes) -> None:
         """Atomically write plist bytes via a sibling temporary file so launchd never sees a partial file."""
@@ -318,14 +337,6 @@ class MacOSLaunchdScheduler(OSJobScheduler):
                 temp_path.unlink(missing_ok=True)
 
     def _run_launchctl(self, *args: str) -> str:
-        result = subprocess.run(
-            [self._launchctl_executable, *args],
-            check=True,
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            encoding="utf-8",
-            errors="replace",
-            text=True,
-            timeout=30,
-        )
-        return result.stdout
+        return run_subprocess(
+            [str(self._launchctl_executable), *args], timeout=30, check=True
+        ).stdout

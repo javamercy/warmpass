@@ -10,6 +10,7 @@ from xml.etree import ElementTree as ET
 
 from pydantic import ValidationError
 
+from warmpass.process import run_subprocess
 from warmpass.scheduling.base import OSJobScheduler, SchedulingError
 from warmpass.scheduling.models import OSJob, ScheduledTrigger
 from warmpass.scheduling.windows.task_xml import (
@@ -70,8 +71,7 @@ class WindowsTaskScheduler(OSJobScheduler):
                     temp_file.write(xml_data)
             except OSError as exc:
                 raise SchedulingError(
-                    f"Could not create task XML for schedule {schedule_id}: {exc}. "
-                    "The schedule record was retained; no task registration was attempted."
+                    f"Could not create task XML for schedule {schedule_id}: {exc}."
                 ) from exc
 
             try:
@@ -84,21 +84,15 @@ class WindowsTaskScheduler(OSJobScheduler):
                 )
             except subprocess.TimeoutExpired as exc:
                 raise SchedulingError(
-                    f"Registration of schedule {schedule_id} timed out. "
-                    f"Task {configuration.name!r} may have been registered. "
-                    "The schedule record was retained; inspect the task before retrying."
+                    f"Registration of schedule {schedule_id} timed out."
                 ) from exc
             except subprocess.CalledProcessError as exc:
-                details = (exc.stderr or exc.stdout or "").strip()
                 raise SchedulingError(
-                    f"Could not register schedule {schedule_id} as task "
-                    f"{configuration.name!r}: {details or exc}. "
-                    "The schedule record was retained; inspect the task before retrying."
+                    f"Could not register schedule {schedule_id} with Task Scheduler: {exc.stderr or exc}"
                 ) from exc
             except OSError as exc:
                 raise SchedulingError(
-                    f"Could not run schtasks for schedule {schedule_id}: {exc}. "
-                    "The schedule record was retained."
+                    f"Could not run schtasks for schedule {schedule_id}: {exc}."
                 ) from exc
         finally:
             if xml_path is not None:
@@ -112,19 +106,15 @@ class WindowsTaskScheduler(OSJobScheduler):
             self._run_schtasks("/delete", "/tn", task_name, "/f")
         except subprocess.TimeoutExpired as exc:
             raise SchedulingError(
-                f"Removing Windows task {task_name!r} timed out; "
-                "its status is unknown. The schedule record was retained."
+                f"Removing Windows task {task_name!r} timed out."
             ) from exc
         except subprocess.CalledProcessError as exc:
-            details = (exc.stderr or exc.stdout or "").strip()
             raise SchedulingError(
-                f"Could not delete Windows task {task_name!r}: {details or exc}. "
-                "The schedule record was retained."
+                f"Could not delete Windows task {task_name!r}: {exc.stderr or exc}."
             ) from exc
         except OSError as exc:
             raise SchedulingError(
-                f"Could not run schtasks to remove schedule {schedule_id}: {exc}. "
-                "The schedule record was retained."
+                f"Could not run schtasks to remove schedule {schedule_id}: {exc}."
             ) from exc
 
     def get_job(self, schedule_id: UUID) -> OSJob | None:
@@ -132,18 +122,17 @@ class WindowsTaskScheduler(OSJobScheduler):
         task_name = build_task_name(schedule_id)
 
         try:
-            xml_output = self._run_schtasks("/query", "/tn", task_name, "/xml")
+            output = self._run_schtasks("/query", "/tn", task_name, "/xml")
         except subprocess.TimeoutExpired as exc:
             raise SchedulingError(
-                f"Checking Windows task {task_name!r} timed out; its status is unknown."
+                f"Checking Windows task {task_name!r} timed out."
             ) from exc
         except subprocess.CalledProcessError as exc:
             if schedule_id not in self.list_job_ids():
                 return None
 
-            details = (exc.stderr or exc.stdout or "").strip()
             raise SchedulingError(
-                f"Cannot verify Windows task {task_name!r}: {details or exc}."
+                f"Cannot verify Windows task {task_name!r}: {exc.stderr or exc}."
             ) from exc
         except OSError as exc:
             raise SchedulingError(
@@ -151,7 +140,7 @@ class WindowsTaskScheduler(OSJobScheduler):
             ) from exc
 
         try:
-            return parse_task_xml(schedule_id, xml_output)
+            return parse_task_xml(schedule_id, output)
         except (ET.ParseError, ValidationError, ValueError) as exc:
             raise SchedulingError(
                 f"Invalid task XML for schedule {schedule_id}: {exc}"
@@ -162,13 +151,10 @@ class WindowsTaskScheduler(OSJobScheduler):
         try:
             output = self._run_schtasks("/query", "/fo", "csv", "/nh")
         except subprocess.TimeoutExpired as exc:
-            raise SchedulingError(
-                "Listing Windows tasks timed out; task status is unknown."
-            ) from exc
+            raise SchedulingError("Listing Windows tasks timed out.") from exc
         except subprocess.CalledProcessError as exc:
-            details = (exc.stderr or exc.stdout or "").strip()
             raise SchedulingError(
-                f"Cannot list Windows tasks: {details or exc}"
+                f"Cannot list Windows tasks: {exc.stderr or exc}"
             ) from exc
         except OSError as exc:
             raise SchedulingError(
@@ -207,28 +193,16 @@ class WindowsTaskScheduler(OSJobScheduler):
             try:
                 self._run_schtasks("/delete", "/tn", task_name, "/f")
             except subprocess.CalledProcessError as exc:
-                details = (exc.stderr or exc.stdout or "").strip()
-                failures.append(f"Cannot delete {task_name}: {details or exc}")
+                failures.append(f"Cannot delete {task_name}: {exc.stderr or exc}")
             except (subprocess.TimeoutExpired, OSError) as exc:
-                failures.append(
-                    f"Cannot delete {task_name}; outcome may be unknown: {exc}"
-                )
+                failures.append(f"Cannot delete {task_name}: {exc}")
 
         if failures:
             raise SchedulingError(
-                "Could not clear all Windows scheduled tasks; no schedule files were removed. "
-                "Some tasks may already have been deleted: " + "; ".join(failures)
+                "Could not clear all Windows scheduled tasks: " + "; ".join(failures)
             )
 
     def _run_schtasks(self, *args: str) -> str:
-        result = subprocess.run(
-            [str(self._schtasks_executable), *args],
-            check=True,
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            encoding="utf-8",
-            errors="replace",
-            text=True,
-            timeout=30,
-        )
-        return result.stdout
+        return run_subprocess(
+            [str(self._schtasks_executable), *args], timeout=30, check=True
+        ).stdout

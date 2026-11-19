@@ -126,6 +126,16 @@ def build_label(schedule_id: UUID | str) -> str:
     return f"{LABEL_PREFIX}{schedule_id}"
 
 
+def build_domain(uid: int) -> str:
+    """Return the launchd job domain for a user ID."""
+    return f"gui/{uid}"
+
+
+def build_target(uid: int, schedule_id: UUID | str) -> str:
+    """Return the launchd job target for a schedule ID."""
+    return f"{build_domain(uid)}/{build_label(schedule_id)}"
+
+
 def build_plist_path(launch_agents_directory: Path, schedule_id: UUID) -> Path:
     """Return the LaunchAgent plist file path for a schedule ID."""
     return launch_agents_directory / f"{LABEL_PREFIX}{schedule_id}{PLIST_SUFFIX}"

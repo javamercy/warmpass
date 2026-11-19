@@ -32,13 +32,22 @@ TRIGGERS = [
 DOMAIN = f"gui/{os.getuid()}"
 
 
+def launchctl_list_output(*labels: str) -> str:
+    rows = [
+        "PID\tStatus\tLabel",
+        "-\t0\tcom.apple.Finder",
+        *(f"-\t0\t{label}" for label in labels),
+    ]
+    return "\n".join(rows) + "\n"
+
+
 class FakeLaunchctl:
     """Records launchctl invocations; failures and output are keyed by subcommand."""
 
     def __init__(self) -> None:
         self.calls: list[tuple[str, ...]] = []
         self.failures: dict[str, BaseException] = {}
-        self.outputs: dict[str, str] = {}
+        self.outputs = {"list": launchctl_list_output()}
 
     def __call__(self, *args: str) -> str:
         self.calls.append(args)
@@ -115,14 +124,17 @@ def test_register_writes_one_plist_and_bootstraps_it(
     assert [p.name for p in launch_agents.iterdir()] == [path.name]
 
 
-def test_register_refuses_an_existing_job_and_leaves_it_alone(
+def test_register_refuses_an_existing_plist_and_leaves_it_alone(
     scheduler: MacOSLaunchdScheduler, launchctl: FakeLaunchctl, launch_agents: Path
 ) -> None:
     existing = write_plist(launch_agents, SCHEDULE_ID)
 
-    with pytest.raises(SchedulingError, match="already exists"):
+    with pytest.raises(
+        SchedulingError, match="LaunchAgent plist already exists"
+    ) as exc_info:
         scheduler.register_job(SCHEDULE_ID, arguments=ARGUMENTS, triggers=TRIGGERS)
 
+    assert str(existing) in str(exc_info.value)
     assert existing.read_text(encoding="utf-8") == "<plist/>"
     assert launchctl.calls == []
 
@@ -132,18 +144,22 @@ def test_register_refuses_an_existing_job_and_leaves_it_alone(
     [
         pytest.param(
             subprocess.CalledProcessError(1, "launchctl", stderr="denied"),
-            "Could not register",
+            f"Could not register schedule {SCHEDULE_ID} with launchd: denied",
             id="rejected",
         ),
-        pytest.param(OSError("no such file"), "Could not register", id="cannot-run"),
+        pytest.param(
+            OSError("no such file"),
+            f"Could not register schedule {SCHEDULE_ID} with launchd: no such file",
+            id="cannot-run",
+        ),
         pytest.param(
             subprocess.TimeoutExpired("launchctl", 30),
-            "The job may have loaded",
-            id="timeout-is-unknown-outcome",
+            f"Registration of schedule {SCHEDULE_ID} timed out.",
+            id="timeout",
         ),
     ],
 )
-def test_register_failure_keeps_the_plist_and_says_so(
+def test_register_failure_reports_the_error_and_keeps_the_plist(
     scheduler: MacOSLaunchdScheduler,
     launchctl: FakeLaunchctl,
     launch_agents: Path,
@@ -152,10 +168,10 @@ def test_register_failure_keeps_the_plist_and_says_so(
 ) -> None:
     launchctl.failures["bootstrap"] = error
 
-    with pytest.raises(SchedulingError, match=message) as exc_info:
+    with pytest.raises(SchedulingError) as exc_info:
         scheduler.register_job(SCHEDULE_ID, arguments=ARGUMENTS, triggers=TRIGGERS)
 
-    assert "retained" in str(exc_info.value)
+    assert str(exc_info.value) == message
     assert plist_for(launch_agents).is_file()
 
 
@@ -186,14 +202,23 @@ def test_unregister_boots_the_job_out_and_removes_its_plist(
 
 
 @pytest.mark.parametrize(
-    "error",
+    ("error", "message"),
     [
         pytest.param(
             subprocess.CalledProcessError(1, "launchctl", stderr="denied"),
+            f"Could not unload schedule {SCHEDULE_ID}: denied.",
             id="rejected",
         ),
-        pytest.param(OSError("no such file"), id="cannot-run"),
-        pytest.param(subprocess.TimeoutExpired("launchctl", 30), id="timeout"),
+        pytest.param(
+            OSError("no such file"),
+            f"Could not run launchctl for schedule {SCHEDULE_ID}: no such file.",
+            id="cannot-run",
+        ),
+        pytest.param(
+            subprocess.TimeoutExpired("launchctl", 30),
+            f"Removing schedule {SCHEDULE_ID} timed out.",
+            id="timeout",
+        ),
     ],
 )
 def test_unregister_failure_keeps_the_plist(
@@ -201,24 +226,42 @@ def test_unregister_failure_keeps_the_plist(
     launchctl: FakeLaunchctl,
     launch_agents: Path,
     error: BaseException,
+    message: str,
 ) -> None:
     path = write_plist(launch_agents, SCHEDULE_ID)
     launchctl.failures["bootout"] = error
 
-    with pytest.raises(SchedulingError, match="plist were retained"):
+    with pytest.raises(SchedulingError) as exc_info:
         scheduler.unregister_job(SCHEDULE_ID)
 
+    assert str(exc_info.value) == message
     assert path.exists()
 
 
 # --- get_job ------------------------------------------------------------------
 
 
-def test_get_job_without_a_plist_is_none_and_does_not_ask_launchctl(
+def test_get_job_is_none_when_neither_the_plist_nor_loaded_job_exists(
     scheduler: MacOSLaunchdScheduler, launchctl: FakeLaunchctl
 ) -> None:
     assert scheduler.get_job(SCHEDULE_ID) is None
-    assert launchctl.calls == []
+    assert launchctl.calls == [("print", DOMAIN), ("list",)]
+
+
+def test_get_job_reports_loaded_job_with_a_missing_plist(
+    scheduler: MacOSLaunchdScheduler,
+    launchctl: FakeLaunchctl,
+    launch_agents: Path,
+) -> None:
+    launchctl.outputs["list"] = launchctl_list_output(build_label(SCHEDULE_ID))
+
+    with pytest.raises(
+        SchedulingError, match="is loaded in launchd, but its plist is missing"
+    ) as exc_info:
+        scheduler.get_job(SCHEDULE_ID)
+
+    assert str(SCHEDULE_ID) in str(exc_info.value)
+    assert not plist_for(launch_agents).exists()
 
 
 def test_get_job_returns_what_was_registered_after_checking_it_is_loaded(
@@ -299,19 +342,29 @@ def test_get_job_rejects_a_plist_whose_label_belongs_to_another_schedule(
 # --- list_job_ids -------------------------------------------------------------
 
 
-def test_list_job_ids_is_an_empty_set_when_launch_agents_does_not_exist(
+def test_list_job_ids_is_empty_when_no_plists_or_loaded_jobs_exist(
     scheduler: MacOSLaunchdScheduler,
 ) -> None:
     assert scheduler.list_job_ids() == set()
 
 
-def test_list_job_ids_returns_only_warmpass_plists(
-    scheduler: MacOSLaunchdScheduler, launch_agents: Path
+def test_list_job_ids_includes_loaded_jobs_without_a_launch_agents_directory(
+    scheduler: MacOSLaunchdScheduler, launchctl: FakeLaunchctl
+) -> None:
+    launchctl.outputs["list"] = launchctl_list_output(build_label(SCHEDULE_ID))
+
+    assert scheduler.list_job_ids() == {SCHEDULE_ID}
+
+
+def test_list_job_ids_combines_warmpass_plists_and_loaded_jobs(
+    scheduler: MacOSLaunchdScheduler,
+    launchctl: FakeLaunchctl,
+    launch_agents: Path,
 ) -> None:
     write_plist(launch_agents, SCHEDULE_ID)
-    write_plist(launch_agents, OTHER_ID)
     (launch_agents / "com.example.unrelated.plist").write_text("", encoding="utf-8")
     (launch_agents / ".DS_Store").write_text("", encoding="utf-8")
+    launchctl.outputs["list"] = launchctl_list_output(build_label(OTHER_ID))
 
     assert scheduler.list_job_ids() == {SCHEDULE_ID, OTHER_ID}
 
@@ -335,16 +388,21 @@ def test_list_job_ids_rejects_malformed_warmpass_filenames(
         scheduler.list_job_ids()
 
 
+def test_list_job_ids_rejects_a_noncanonical_loaded_label(
+    scheduler: MacOSLaunchdScheduler, launchctl: FakeLaunchctl
+) -> None:
+    label = f"dev.warmpass.schedule.{str(SCHEDULE_ID).upper()}"
+    launchctl.outputs["list"] = launchctl_list_output(label)
+
+    with pytest.raises(
+        SchedulingError, match="Invalid loaded schedule label"
+    ) as exc_info:
+        scheduler.list_job_ids()
+
+    assert label in str(exc_info.value)
+
+
 # --- clear_jobs ---------------------------------------------------------------
-
-
-def launchctl_list_output(*labels: str) -> str:
-    rows = [
-        "PID\tStatus\tLabel",
-        "-\t0\tcom.apple.Finder",
-        *(f"-\t0\t{x}" for x in labels),
-    ]
-    return "\n".join(rows) + "\n"
 
 
 def test_clear_only_touches_jobs_and_plists_with_the_warmpass_prefix(
@@ -355,7 +413,7 @@ def test_clear_only_touches_jobs_and_plists_with_the_warmpass_prefix(
     unrelated.write_text("", encoding="utf-8")
     loaded_without_plist = build_label(OTHER_ID)
     launchctl.outputs["list"] = launchctl_list_output(
-        build_label(SCHEDULE_ID), loaded_without_plist
+        build_label(SCHEDULE_ID), loaded_without_plist, loaded_without_plist
     )
 
     scheduler.clear_jobs()
@@ -400,7 +458,7 @@ def test_clear_removes_no_files_when_discovery_fails(
     path = write_plist(launch_agents, SCHEDULE_ID)
     launchctl.failures["print"] = subprocess.TimeoutExpired("launchctl", 30)
 
-    with pytest.raises(SchedulingError, match="no files were removed"):
+    with pytest.raises(SchedulingError, match="Cannot discover loaded schedules"):
         scheduler.clear_jobs()
 
     assert launchctl.targets("bootout") == []
@@ -416,9 +474,12 @@ def test_clear_removes_no_files_when_a_job_cannot_be_unloaded(
         1, "launchctl", stderr="denied"
     )
 
-    with pytest.raises(SchedulingError, match="no schedule files were removed"):
+    with pytest.raises(
+        SchedulingError, match="Could not clear all launchd jobs"
+    ) as exc_info:
         scheduler.clear_jobs()
 
+    assert f"Cannot unload {build_label(SCHEDULE_ID)}: denied" in str(exc_info.value)
     assert path.exists()
 
 

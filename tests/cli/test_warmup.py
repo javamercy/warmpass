@@ -20,9 +20,11 @@ runner = CliRunner()
         pytest.param("claude", "claude", id="claude"),
     ],
 )
-def test_successful_warmup_exits_zero_and_logs_to_stdout(
+def test_successful_warmup_without_agent_output_exits_zero_and_logs_to_stdout(
     agent_process: FakeAgentProcess, agent: str, executable: str
 ) -> None:
+    agent_process.stdout = ""
+
     result = runner.invoke(app, ["warmup", "--agent", agent])
 
     assert result.exit_code == 0
@@ -51,25 +53,20 @@ def test_selected_model_is_passed_to_the_agent(
 
 
 @pytest.mark.parametrize(
-    ("returncode", "stdout", "stderr", "error", "message"),
+    ("returncode", "error", "message"),
     [
-        pytest.param(7, "", "quota exhausted", None, "exit code 7", id="agent-failed"),
-        pytest.param(0, "", "", None, "empty response", id="empty-reply"),
-        pytest.param(0, "", "", TimeoutExpired("codex", 60), "timed out", id="timeout"),
-        pytest.param(0, "", "", FileNotFoundError(), "not found", id="not-installed"),
+        pytest.param(7, None, "exit code 7", id="agent-failed"),
+        pytest.param(0, TimeoutExpired("codex", 60), "timed out", id="timeout"),
+        pytest.param(0, FileNotFoundError(), "not found", id="not-installed"),
     ],
 )
 def test_failed_warmup_exits_one_with_message_on_stderr(
     agent_process: FakeAgentProcess,
     returncode: int,
-    stdout: str,
-    stderr: str,
     error: BaseException | None,
     message: str,
 ) -> None:
     agent_process.returncode = returncode
-    agent_process.stdout = stdout
-    agent_process.stderr = stderr
     agent_process.error = error
 
     result = runner.invoke(app, ["warmup", "--agent", "codex"])
