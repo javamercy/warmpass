@@ -51,7 +51,10 @@ def print_schedule(schedule: WarmupSchedule, console: Console) -> None:
 
     table.add_row("ID", Text(str(schedule.id)))
     table.add_row("Agent", schedule.agent.value)
-    table.add_row("Model", schedule.model if schedule.model is not None else "Default")
+
+    model = schedule.model if schedule.model is not None else "Default"
+
+    table.add_row("Model", Text(model))
     table.add_row("Trigger", format_trigger(schedule.trigger))
 
     console.print(table)
@@ -71,10 +74,11 @@ def print_schedules(schedules: list[WarmupSchedule], console: Console) -> None:
     table.add_column("Schedule")
 
     for schedule in schedules:
+        model = schedule.model if schedule.model is not None else "Default"
         table.add_row(
             Text(str(schedule.id)),
             schedule.agent.value,
-            schedule.model if schedule.model is not None else "Default",
+            Text(model),
             format_trigger(schedule.trigger),
         )
 

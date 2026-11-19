@@ -28,9 +28,10 @@ def test_successful_warmup_without_agent_output_exits_zero_and_logs_to_stdout(
     result = runner.invoke(app, ["warmup", "--agent", agent])
 
     assert result.exit_code == 0
-    assert f"INFO Warmup started: agent={agent}" in result.stdout
-    assert f"INFO Warmup completed: agent={agent} duration=" in result.stdout
-    assert result.stderr == ""
+    (completion,) = result.stdout.splitlines()
+    (attempt,) = result.stderr.splitlines()
+    assert f"INFO Warmup completed: agent={agent} duration=" in completion
+    assert attempt.endswith(f"INFO Attempting warmup: agent={agent}")
     (call,) = agent_process.calls
     assert call.command[0] == executable
     assert WARMUP_PROMPT in call.command
@@ -46,7 +47,6 @@ def test_selected_model_is_passed_to_the_agent(
     )
 
     assert result.exit_code == 0, result.output
-    assert result.stderr == ""
     (call,) = agent_process.calls
     assert WARMUP_PROMPT in call.command
     assert call.command[-2:] == ["--model", "custom-model"]
@@ -72,8 +72,8 @@ def test_failed_warmup_exits_one_with_message_on_stderr(
     result = runner.invoke(app, ["warmup", "--agent", "codex"])
 
     assert result.exit_code == 1
-    assert "Warmup started" in result.stdout
-    assert "Warmup completed" not in result.stdout
+    assert result.stdout == ""
+    assert "INFO Attempting warmup: agent=codex" in result.stderr
     assert "ERROR Warmup failed: agent=codex" in result.stderr
     assert message in result.stderr
     assert "Traceback" not in result.output

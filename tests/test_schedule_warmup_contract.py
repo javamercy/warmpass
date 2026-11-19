@@ -52,7 +52,9 @@ def test_registered_job_arguments_run_as_a_warmup(
     result = CliRunner().invoke(app, arguments_without_executable, input="")
 
     assert result.exit_code == 0, result.output
-    assert result.stderr == ""
+    (attempt,) = result.stderr.splitlines()
+    assert attempt.endswith(f"INFO Attempting warmup: agent={agent.value}")
+    assert f"INFO Warmup completed: agent={agent.value}" in result.stdout
     (call,) = agent_process.calls
     assert call.command.count("--model") == model_arguments.count("--model")
     if model_arguments:

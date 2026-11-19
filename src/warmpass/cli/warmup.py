@@ -28,7 +28,10 @@ def warmup(
     """Warm up a specific agent immediately."""
     console = Console(stderr=True)
 
-    typer.echo(f"{_timestamp()} INFO Warmup started: agent={agent.value}")
+    typer.echo(
+        f"{_timestamp()} INFO Attempting warmup: agent={agent.value}",
+        err=True,
+    )
     started_at = perf_counter()
 
     try:
