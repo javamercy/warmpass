@@ -8,6 +8,7 @@ requires-python = ">=3.14"
 dependencies = [
     "platformdirs>=4.14.3",
     "pydantic>=2.14.2",
+    "rich>=15.0.0",
     "typer>=0.27.3",
 ]
 
@@ -50,18 +51,18 @@ line-length = 88
 
 [tool.ruff.lint]
 select = [
-    "E",      # pycodestyle
-    "F",      # Pyflakes
-    "I",      # isort
-    "UP",     # pyupgrade
-    "B",      # flake8-bugbear
-    "SIM",    # flake8-simplify
-    "C4",     # flake8-comprehensions
+    "E", # pycodestyle
+    "F", # Pyflakes
+    "I", # isort
+    "UP", # pyupgrade
+    "B", # flake8-bugbear
+    "SIM", # flake8-simplify
+    "C4", # flake8-comprehensions
     "RUF100", # Unused noqa directives
 ]
 
 ignore = [
-    "E501",   # Leave line wrapping to the formatter
+    "E501", # Leave line wrapping to the formatter
 ]
 
 [tool.ruff.lint.flake8-bugbear]
