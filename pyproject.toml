@@ -1,9 +1,18 @@
 [project]
 name = "warmpass"
 version = "0.1.0"
-description = "Add your description here"
+description = "Run and schedule coding agent warmups to start usage windows early."
 readme = "README.md"
-
+authors = [{ name = "Emre Kurşun" }]
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["cli", "agents", "claude", "antigravity", "codex", "scheduler"]
+classifiers = [
+    "Environment :: Console",
+    "Programming Language :: Python :: 3.14",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+]
 requires-python = ">=3.14"
 dependencies = [
     "platformdirs>=4.14.3",
@@ -11,6 +20,11 @@ dependencies = [
     "rich>=15.0.0",
     "typer>=0.27.3",
 ]
+
+[project.urls]
+Homepage = "https://github.com/javamercy/warmpass"
+Repository = "https://github.com/javamercy/warmpass"
+Issues = "https://github.com/javamercy/warmpass/issues"
 
 [project.scripts]
 warmpass = "warmpass.cli.main:app"
@@ -30,9 +44,7 @@ dev = [
 # Pytest
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# Mirrored layout repeats basenames (test_scheduler.py, test_plist.py).
 addopts = ["--import-mode=importlib"]
-# Lets tests import the shared fakes as `tests.support.fakes`.
 pythonpath = ["."]
 
 # Pyrefly
